@@ -191,9 +191,55 @@ The common service owns discovery, conversations, reply links, duplicate suppres
 
 Cloud deployment uses its own SQLite-backed Durable Object. Self-hosting uses a separate `personal.sqlite3`. Both keep their storage separate from the local coding-session mailbox. The service does not read private agent databases, expose native session sockets, synchronize memories or provide a remote shell.
 
+## Ordinary ChatGPT context requests — local prototype
+
+The isolated context prototype lets an ordinary ChatGPT requester ask one factual question of Dot or an explicitly named Codex receiver. Model choice is independent of the feature. **This branch implements the local contract and synthetic receivers only. It is not connected to ChatGPT, Dot, Codex or the live service.**
+
+The requester tools are `request_context` and `context_result`. A saved request returns `pending` with the caller's stable request ID; the same authenticated requesting conversation retrieves its answer explicitly. Pending is not proof of delivery or reading. A completed answer includes the responding receiver, source references and observation times. Source references are receiver assertions; the prototype does not verify their truth or fetch their contents.
+
+This diagram extends the existing architecture proposal. Solid paths inside the prototype are exercised locally. Dashed paths require future integration and approval; existing Dot–Grokbot messaging remains separate.
+
+![Local context contract and proposed live integration](assets/context-requests.svg)
+
+[Editable diagram source](assets/context-requests.dot). The maintained internal system-city model remains separate; this public diagram contains no private deployment or session identifiers.
+
+### Run the local example
+
+From this checkout, using Python 3.10+:
+
+```sh
+python3 scripts/context_demo.py
+python3 -m unittest discover -s tests -p test_context.py -v
+```
+
+The example creates a temporary database, submits a question, suppresses an identical retry, claims it once with a synthetic receiver, and explicitly retrieves a sourced fixture answer. It runs once for Dot and once for an exact named Codex fixture. It uses no network, real credentials, native sessions, subscription or monitor. It loads this checkout's code rather than an installed plugin.
+
+### Identity, scope and disposition
+
+`agentpeers/personal/context.py` exposes the requester contract separately from the existing personal-agent `App`. The live application's tool catalog, OAuth behavior, event handlers, connection configuration and cloud bundle are unchanged. Constructing the prototype with no grants permits no requests. Its database rejects an existing personal mailbox or other foreign database; there is no live schema migration.
+
+A future trusted host adapter must supply a verified `Requester(owner, subject, session)` independently of model-controlled tool arguments. A host-approved grant pins an exact destination, topic, scope and receiver to that owner and subject. Session correlation is mandatory. Requesters cannot call general inbox, send, claim or answer tools. Receivers use a separate host-bound `Receiver(owner, peer)`. An exact named Codex session is pinned; a replacement cannot inherit its requests. Changing a grant cannot reassign earlier work.
+
+`openai/session` and `openai/subject` metadata may help correlation, but the prototype does not treat them as authentication or permission. It does not infer requester identity from `/mcp/dot`, accept an identity override in tool arguments, or assume existing receiver credentials transfer. Production identity binding is unresolved.
+
+Request IDs are scoped by owner, subject and session. Identical retries return the same state; changed content under the same ID is rejected. Claims are atomic across threads and database connections. One claimed request accepts one sourced answer, with identical answer retries allowed. Processing is not a read receipt. A crash leaves claimed work processing; restart does not release it or replay it. A fixed deadline expires unanswered work without extending on retries. Receiver failure is terminal, with `unavailable`, `blocked` or `unsupported` disposition. Failed or expired work is not automatically resent. Storage has a finite capacity and preserves earlier records when full.
+
+Each answer is limited to the necessary facts, up to five source references and their observation times. Peer content remains outside human authority. The interface cannot publish, spend, change access or execute business actions. A receiver must still follow its native authorization rules. Already-persisted canonical facts may be better served by an approved direct knowledge read.
+
+### Before activation
+
+The following work and exact approvals are still required:
+
+1. Verify an official requester identity/role binding and enforce its owner, subject and session at the real transport boundary. Approve the separate requester connection and exact request/result permissions. No production OAuth, credential or access change is included here.
+2. Approve the exact receiver identities, factual topics, source scope and requesting audience. Dot's existing listener and any native coordinator-to-Codex forwarding/return contract need verification; this prototype does not implement or certify those adapters.
+3. Approve the exact candidate deployment, request-store migration/retention/rollback plan and any necessary listener or connection adjustment, while preserving the existing Dot–Grokbot service. No new service or polling monitor is proposed.
+4. Approve one bounded synthetic live acceptance test, naming the originating chat, Dot and any exact Codex session. Prove a correlated sourced return, wrong-owner/subject/session denial, duplicate handling, deadline behavior, and existing-message regression. Local fixture results do not establish these live properties.
+
+Automatic background delivery into ordinary ChatGPT chats is not established. The initial contract is pending plus explicit retrieval; no ordinary-chat wake is promised. The future production route in the diagram remains proposed. Nothing in this section authorizes deployment, publication, connection changes or a live test.
+
 ## References
 
-- [OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events), [OAuth](https://developers.openai.com/plugins/build/auth), [custom MCP setup](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+- [OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events), [OAuth](https://developers.openai.com/plugins/build/auth), [custom MCP setup](https://developers.openai.com/api/docs/guides/custom-mcp-server), [plugin correlation metadata](https://developers.openai.com/plugins/reference).
 - [Grokbot native routines](https://cursor.com/help/grok-bot/routines).
 - [UnCooe/grok-dot-bridge](https://github.com/UnCooe/grok-dot-bridge): reference for existing-agent exchanges and duplicate handling.
 - [sabotage-dev/botline](https://github.com/sabotage-dev/botline): reference for cross-vendor messaging and native capability differences.
