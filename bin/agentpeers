@@ -1,14 +1,14 @@
 #!/bin/sh
 # Works in either plugin cache and through a PATH symlink.
 if ! command -v python3 >/dev/null 2>&1; then
-    echo 'Agentpeers needs Python 3.10+. Install Python and make python3 available to both clients, then reload the plugin.' >&2
+    echo 'AgentPeers needs Python 3.10+. Install Python and make python3 available to both clients, then reload the plugin.' >&2
     exit 127
 fi
 exec python3 -c '
 import sys
 from pathlib import Path
 if sys.version_info < (3, 10):
-    print("Agentpeers needs Python 3.10+. Upgrade Python, then reload the plugin.", file=sys.stderr)
+    print("AgentPeers needs Python 3.10+. Upgrade Python, then reload the plugin.", file=sys.stderr)
     sys.exit(1)
 entry = Path(sys.argv.pop(1)).resolve()
 sys.argv[0] = "agentpeers"

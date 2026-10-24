@@ -142,7 +142,7 @@ class Bridge:
                 "desktop_connection_unavailable": "The desktop connection could not be reached. Whether the app is running is unknown.",
                 "desktop_handshake_failed": "The desktop connection could not be verified. Whether the app is running is unknown.",
                 "desktop_owner_discovery_failed": "The desktop connection works, but this chat's receiving state could not be verified.",
-                "desktop_owner_incompatible": "This chat has a receiver, but it cannot accept Agentpeers messages safely.",
+                "desktop_owner_incompatible": "This chat has a receiver, but it cannot accept AgentPeers messages safely.",
                 "desktop_wake_failed": "Opening the destination did not establish a compatible receiver.",
                 "desktop_wake_unsupported": "Desktop wake is unavailable on this operating system.",
                 "name_resolution_unverified": "One or more matching receivers could not be checked. Their session state is unknown.",
@@ -155,7 +155,7 @@ class Bridge:
         result["warnings"] = []
         if result["return_route"] and result["return_route"]["status"] == "wake_required":
             result["warnings"].append("The sender's desktop chat needs opening to receive replies. "
-                "Desktop wake is enabled; an updated Agentpeers sender can open it automatically. "
+                "Desktop wake is enabled; an updated AgentPeers sender can open it automatically. "
                 "This may change the app's selected chat. A reply still needs a live read receipt.")
         elif result["return_route"] and result["return_route"]["status"] != "available":
             result["warnings"].append("No automatic reply route was verified for this sender. "

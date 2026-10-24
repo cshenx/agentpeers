@@ -214,7 +214,7 @@ def send_codex(destination, envelope):
         with Desktop() as desktop:
             return desktop.send(destination, envelope)
     except Unavailable as exc:
-        raise Unavailable("No Agentpeers receive route: target is not verified loaded on the shared server "
+        raise Unavailable("No AgentPeers receive route: target is not verified loaded on the shared server "
                           "and the desktop adapter is unavailable. Native Codex session messaging may still work; "
                           "use it first for Codex-to-Codex within existing authorization. " + str(exc),
                           **{**exc.diagnostics, "session_id": destination["id"],
@@ -277,7 +277,7 @@ def codex_sessions():
     return [{"id": "codex:" + row["id"], "runtime": "codex",
              "surface": "shared-server" if row["id"] in live else "desktop-or-stored",
              "name": row.get("name") or row.get("preview") or row["id"], "name_address": row.get("name"),
-             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else "Agentpeers reachability unverified; native Codex messaging may be available"}
+             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else "AgentPeers reachability unverified; native Codex messaging may be available"}
             for row in rows]
 
 

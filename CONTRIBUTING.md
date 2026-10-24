@@ -1,17 +1,21 @@
-# Contributing to Agentpeers
+# Contributing to AgentPeers
 
-Agentpeers connects existing Codex terminal or desktop sessions with Claude Code terminal sessions on one Mac. Keep changes focused on discovery, message delivery, receipts and understandable setup. Discuss new runtimes, remote transport or orchestration features in an issue before adding them.
+AgentPeers connects existing AI agents across platforms. It has a local Claude Code ↔ Codex connection and an optional Grokbot ↔ Dot connection service. Contributions should make agent discovery, questions, replies and setup work reliably through the platforms people already use. New native platform adapters are welcome; discuss the intended agent interface and supported connection in an issue before implementation.
 
 ## Development
+
+Grokbot and Dot adapters use the optional `agentpeers.personal` connection service. Keep common messaging independent of vendors; adapters declare native receiving and uncertainty behavior. Verify the existing personal agent before advertising support; model API calls are not substitutes. See [personal agents](docs/personal-agents.md).
 
 Clone the repository and use Python 3.10+:
 
 ```sh
-python3 -m unittest discover -s tests -v
+python3 scripts/test.py
 git diff --check
 ```
 
-No third-party runtime packages are needed. Tests use temporary stores and fixture sockets; they must not contact live agents or depend on your private client configuration. Some sandboxes prohibit Unix socket binding: run through normal host-access approval rather than weakening protections. GitHub CI covers macOS with Python 3.10 and 3.13. The runtime adapter is currently macOS-only.
+The local session bridge and self-hosted service need no third-party runtime packages. The optional cloud build uses the pinned tools in `package-lock.json` and `cloud/requirements-build.txt`; run `npm ci` and `npm run check:cloud` to validate its allowlisted bundle. Cloud runtime checks require `AGENTPEERS_WRANGLER` and `AGENTPEERS_TEST_SCRATCH` pointing to the installed Wrangler executable and an admitted disposable scratch directory. They use workerd and fixture transports, with no live vendor calls. Tests use temporary stores and fixture sockets; they must not contact live agents or depend on your private client configuration. Some sandboxes prohibit Unix socket binding: run through normal host-access approval rather than weakening protections. GitHub CI covers macOS with Python 3.10 and 3.13. The Claude Code/Codex session adapters are macOS-only. The optional self-hosted connection service targets Linux and macOS; its HTTP/proxy coverage is fixture-based.
+
+The test entrypoint isolates the default message/policy directory, including when desktop wake is enabled in the operator's real installation. Personal-agent HTTP tests bind only temporary loopback listeners. Optional proxy tests run when HAProxy is on PATH, or when `AGENTPEERS_HAPROXY` names its executable; otherwise they are skipped. They exercise the actual OAuth/message journey through the deployment configuration, body limits, slow-request deadlines and backend concurrency. Source tests and live-agent acceptance remain separate.
 
 For plugin changes, test a relocated copy with spaces in its path, MCP initialization and tools/list, missing Python, and version consistency across both plugin manifests, the server and pyproject.toml. Run `python3 scripts/package.py` after committing; it writes a ZIP and SHA-256 sidecar under ignored `dist/`, using only tracked files from that commit.
 
@@ -29,7 +33,7 @@ Explain the user-visible problem, resulting behavior, relevant client versions a
 
 Maintainers review compatibility, live receipts, packaging and the repository's disclosure boundary before a release. CI is regression evidence, not a live-delivery certificate. There is no automated publication workflow; changing repository visibility or publishing a package requires an explicit maintainer decision. Release reviews are tracked in GitHub issues and pull requests.
 
-Before the first public release:
+Before publishing a version:
 
 1. Review the exact candidate commit and align the default branch with it, so the documented Git installation gets the reviewed version.
 2. Run regression tests and the tracked-source packager. Test installation, update and removal with separate temporary client configuration directories; preserve real client settings and message stores.

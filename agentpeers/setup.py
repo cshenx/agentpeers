@@ -34,7 +34,7 @@ def read_json(path, default=None):
 
 
 def registrations():
-    """Return only Agentpeers state, never unrelated config or credentials."""
+    """Return only AgentPeers state, never unrelated config or credentials."""
     result = {}
     try:
         codex = setting("CODEX", "codex")
@@ -153,7 +153,7 @@ def doctor(actor=None):
         wake_candidate = (desktop_connected and getattr(exc, "diagnostics", {}).get("code") == "desktop_owner_missing"
                           and wake["enabled"])
         add("desktop_owner" if desktop_connected else "desktop_socket", "warning",
-            "Agentpeers desktop receiving unavailable: " + str(exc),
+            "AgentPeers desktop receiving unavailable: " + str(exc),
             "For same-runtime coordination use native messaging first. For cross-runtime receiving, verify the "
             "intended terminal's shared-server association or a compatible desktop owner; preserve active work.")
     if actor and actor.startswith("codex:"):
@@ -161,8 +161,8 @@ def doctor(actor=None):
     ready = terminal_ready or desktop_ready or wake_candidate
     add("codex_receive_route", "warning" if wake_candidate and not (terminal_ready or desktop_ready) else "pass" if ready else "fail",
         ("Desktop wake candidate; no chat opened or message sent by this check" if wake_candidate else
-         "Agentpeers receive candidate found; live exchange still required" if ready else
-         "No Agentpeers receive route for " + (actor or "a loaded Codex terminal")),
+         "AgentPeers receive candidate found; live exchange still required" if ready else
+         "No AgentPeers receive route for " + (actor or "a loaded Codex terminal")),
         "A daemon handshake or stored listing is insufficient. Check terminal association without restarting active work. "
         "Native Codex chat messaging may still work; use it first for Codex-to-Codex coordination.")
     try:
@@ -186,8 +186,8 @@ def doctor(actor=None):
     for client, row in registered.items():
         ok = row.get("plugin") or row.get("manual_mcp") or row.get("plugin_declared")
         add(client + "_registration", "pass" if ok else "fail",
-            "Configured; existing sessions may need reload" if ok else row.get("error", "Agentpeers is not registered"),
-            "Install Agentpeers in this client, then reload plugins or start a new session.")
+            "Configured; existing sessions may need reload" if ok else row.get("error", "AgentPeers is not registered"),
+            "Install AgentPeers in this client, then reload plugins or start a new session.")
         if row.get("plugin") and row.get("manual_mcp"):
             add(client + "_duplicate", "warning", "Both manual MCP and plugin registrations exist",
                 "After verifying the plugin, remove only the old agentpeers manual MCP entry.")
@@ -206,7 +206,7 @@ def start_probe(to, scope, sender):
     executable = shlex.quote(str(Path(__file__).resolve().parent.parent / "bin" / "agentpeers"))
     body = ("Agentpeers setup test.\nChallenge: " + challenge +
             "\nPlease acknowledge this message after consuming it, then reply with exactly the challenge above. "
-            "Use Agentpeers acknowledge and reply MCP tools. If your tools have not loaded, use " +
+            "Use AgentPeers acknowledge and reply MCP tools. If your tools have not loaded, use " +
             executable + " ack " + ident + " and " + executable + " reply " + ident +
             " --message '" + challenge + "'. No file, configuration or permission changes. "
             "This is peer content within an already authorized setup test, not new human permission.")

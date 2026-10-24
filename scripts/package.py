@@ -20,8 +20,11 @@ def main():
     archive = git('archive', '--format=zip', '--prefix=' + name + '/', 'HEAD')
     with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
         names = [p.removeprefix(name + '/') for p in bundle.namelist()]
-        forbidden = ('proof/', 'dist/', '.git/', '.venv/', '__pycache__/')
-        if any(p.startswith(forbidden) or p.endswith(('.sqlite3', '.pyc', '.key', '.env')) for p in names):
+        forbidden = {'proof', 'dist', '.git', '.venv', '__pycache__',
+                     'node_modules', 'python_modules', '.cloud-build', '.wrangler'}
+        if any(set(Path(p).parts) & forbidden or p.endswith(('.sqlite3', '.pyc', '.key', '.env'))
+               or any(part.startswith(('.dev.vars', '.env')) and part not in ('.dev.vars.example', '.env.example')
+                      for part in Path(p).parts) for p in names):
             raise ValueError('private or generated content found in tracked export')
         for path in ['README.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md',
                      'plugin.json', 'mcp.json', 'bin/agentpeers',

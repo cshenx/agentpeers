@@ -1,0 +1,36 @@
+# Example for an owner-managed Linux host; install only after host admission.
+# Create the dedicated agentpeers user, install reviewed code in /opt/agentpeers/venv,
+# and provision mode-0600 configuration owned by that user. No automatic installer.
+[Unit]
+Description=AgentPeers personal-agent messaging
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentpeers
+Group=agentpeers
+StateDirectory=agentpeers-personal
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/agentpeers-personal
+ExecStart=/opt/agentpeers/venv/bin/python -m agentpeers personal serve --config /var/lib/agentpeers-personal/config.json
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+MemoryMax=128M
+TasksMax=32
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agentpeers-personal
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

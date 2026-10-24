@@ -9,20 +9,20 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: Agentpeers commit/version, macOS, Codex CLI, optional desktop, Claude Code; whether the shared server is running.
+      description: AgentPeers commit/version and affected connection. For local sessions: macOS and Codex/Claude Code versions. For Grokbot/Dot: client versions and Cloudflare or self-hosted deployment; no credentials or callback URLs.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
       label: Steps and expected behavior
-      description: Include whether the destination was busy, idle or exited. Redact session names and project paths.
+      description: Identify the supported pair and whether the recipient was busy, idle or unavailable. Redact session names, project paths and account identifiers.
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
       label: Actual behavior and redacted status
-      description: Distinguish submitted, read, unavailable and unconfirmed. State whether a receiving agent actually acknowledged.
+      description: Include redacted message status and whether the receiving agent consumed the message or replied. For the service, include the relevant receiving status without secrets.
     validations:
       required: true

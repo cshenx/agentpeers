@@ -15,7 +15,7 @@ def policy(enabled=None):
     if root.exists() or root.is_symlink():
         owned_path(root, stat.S_ISDIR)
         if root.stat().st_mode & 0o077:
-            raise ValueError("Agentpeers state directory must be private (0700)")
+            raise ValueError("AgentPeers state directory must be private (0700)")
     value = False
     if path.exists() or path.is_symlink():
         owned_path(path, stat.S_ISREG)

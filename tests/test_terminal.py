@@ -120,7 +120,7 @@ class TerminalJourney(unittest.TestCase):
                 desktop.return_value.__enter__.return_value.owner.assert_called_once_with(C.split(":")[1])
                 if not desktop_available:
                     diagnostic = next(row for row in result["checks"] if row["name"] == "desktop_owner")
-                    self.assertIn("Agentpeers desktop receiving unavailable", diagnostic["detail"])
+                    self.assertIn("AgentPeers desktop receiving unavailable", diagnostic["detail"])
                     self.assertIn("native messaging first", diagnostic["fix"])
                     self.assertNotIn("Open Codex", diagnostic["fix"])
 

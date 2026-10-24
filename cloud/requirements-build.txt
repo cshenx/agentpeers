@@ -1,0 +1,2 @@
+# Official Python Workers SDK. Build-time only; no dependency resolution.
+workers-runtime-sdk==1.9.5 --hash=sha256:f2b912660a3ab60d2a24920106422f9eaf4cd7a794e42b022237ad2444287fef

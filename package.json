@@ -1,0 +1,24 @@
+{
+  "name": "agentpeers-cloud",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Deploy the AgentPeers Grokbot ↔ Dot connection in your Cloudflare account.",
+  "scripts": {
+    "dev": "wrangler dev --local --ip 127.0.0.1",
+    "deploy": "wrangler deploy",
+    "check:cloud": "wrangler deploy --dry-run --outdir .cloud-build/export"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "cloudflare": {
+    "bindings": {
+      "AGENTPEERS_OWNER_KEY": {
+        "description": "A new random owner key, at least 32 characters. Keep it in your password manager; only you use it to connect your agents."
+      }
+    }
+  }
+}

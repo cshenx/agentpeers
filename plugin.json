@@ -1,16 +1,16 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agentpeers",
-  "version": "0.6.2",
-  "description": "Let your Codex and Claude Code sessions talk to each other.",
+  "version": "0.7.0",
+  "description": "The AgentPeers local connection: Claude Code ↔ Codex sessions.",
   "license": "MIT",
   "extensions": {
     "com.openai": {
       "onboardingSkill": "./skills/setup/SKILL.md",
       "interface": {
-        "displayName": "Agentpeers",
-        "shortDescription": "Let Codex and Claude Code talk to each other",
-        "longDescription": "Ask either agent to find the other session, ask questions, share findings and coordinate work without relaying messages yourself. Connect Codex terminal or loaded desktop chats with Claude Code terminal sessions on one Mac. Python 3.10+ required.",
+        "displayName": "AgentPeers",
+        "shortDescription": "Connect Claude Code and Codex sessions",
+        "longDescription": "Let Claude Code and Codex ask each other questions, share findings and exchange replies in their existing sessions. Supports Claude Code terminal sessions with Codex terminal or compatible desktop chats on the same Mac; Python 3.10+ required. AgentPeers also offers a separate Grokbot ↔ Dot connection preview, deployed in your Cloudflare account or on your own server. Installing this plugin sets up the local connection.",
         "category": "Productivity"
       }
     }

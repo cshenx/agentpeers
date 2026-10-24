@@ -5,3 +5,13 @@ build/
 dist/
 .venv/
 proof/
+
+node_modules
+python_modules/
+.cloud-build/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env*
+!.env.example

@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentpeers-personal",
+  "main": ".cloud-build/runtime/worker.py",
+  "base_dir": ".cloud-build/runtime",
+  "compatibility_date": "2026-10-22",
+  "compatibility_flags": ["python_workers"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "build": {"command": "python3 scripts/prepare_cloud.py", "watch_dir": ["agentpeers/personal", "cloud"]},
+  "durable_objects": {"bindings": [{"name": "MAILBOX", "class_name": "Mailbox"}]},
+  "migrations": [{"tag": "personal-v1", "new_sqlite_classes": ["Mailbox"]}],
+  "observability": {"enabled": false}
+}

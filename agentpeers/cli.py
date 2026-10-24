@@ -9,21 +9,25 @@ from . import native
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Local Codex ↔ Claude Code peer messages; use native messaging first for same-runtime peers")
+    if len(sys.argv) > 1 and sys.argv[1] == "personal":
+        from .personal.cli import main as personal_main
+        return personal_main(sys.argv[2:])
+    parser = argparse.ArgumentParser(prog="agentpeers", description="Peer messaging between your existing AI agents across platforms.",
+                                     epilog="Local session commands connect Claude Code and Codex on one Mac. Use agentpeers personal --help for the separate Grokbot and Dot connection service.")
     parser.add_argument("--from", dest="actor", help="own session address; normally inferred")
     sub = parser.add_subparsers(dest="command", required=True)
-    listing = sub.add_parser("list")
+    listing = sub.add_parser("list", help="discover local Claude Code and Codex sessions")
     listing.add_argument("--runtime", choices=["codex", "claude", "all"], default="all")
-    sub.add_parser("whoami")
+    sub.add_parser("whoami", help="show this local session identity")
     waking = sub.add_parser("desktop-wake", help="opt in to opening unloaded destination chats in Codex desktop")
     waking.add_argument("mode", choices=["enable", "disable", "status"], default="status", nargs="?")
-    checking = sub.add_parser("doctor", help="check dependencies and registrations without sending")
+    checking = sub.add_parser("doctor", help="check local plugin dependencies and registrations without sending")
     checking.add_argument("--probe", help="verify an earlier setup challenge after reading its reply")
-    sending = sub.add_parser("send")
+    sending = sub.add_parser("send", help="send a message to a local peer session")
     sending.add_argument("--to", required=True, help="exact native session name or runtime:UUID")
     sending.add_argument("--scope", required=True, help="scope authorized by the human; not peer content")
     sending.add_argument("--id", help="stable UUID for an idempotent submission")
-    replying = sub.add_parser("reply")
+    replying = sub.add_parser("reply", help="reply to a local session message")
     replying.add_argument("id")
     for command, default in [(sending, "reply"), (replying, "none")]:
         source = command.add_mutually_exclusive_group(required=True)
@@ -35,17 +39,21 @@ def main():
         command.add_argument("--record-ref", help="inert path, URL or commit reference; never fetched automatically")
     sending.add_argument("--allow-question", action="store_true", help="allow this exact worker one question to its dispatcher")
     sending.add_argument("--decision-id", help="correlate a human decision question; does not grant permission")
-    sub.add_parser("decision-status").add_argument("decision_id")
+    sub.add_parser("decision-status", help="inspect local peer reports about a decision").add_argument("decision_id")
     asking = sub.add_parser("ask-dispatcher", help="one question about an explicitly opted-in assignment")
     asking.add_argument("assignment_id")
     question_source = asking.add_mutually_exclusive_group(required=True)
     question_source.add_argument("--message")
     question_source.add_argument("--message-file")
-    sub.add_parser("inbox")
-    for command in ["ack", "status"]:
-        sub.add_parser(command).add_argument("id")
-    sub.add_parser("mcp")
+    sub.add_parser("inbox", help="inspect this local session mailbox")
+    for command, help_text in [("ack", "acknowledge consuming a local message"),
+                               ("status", "inspect an existing local message")]:
+        sub.add_parser(command, help=help_text).add_argument("id")
+    sub.add_parser("mcp", help="run the local Claude Code and Codex MCP server")
+    sub.add_parser("personal", help="configure or serve the separate Grokbot and Dot connection; see personal --help")
     args = parser.parse_args()
+    if args.command == "personal":
+        parser.error("Place personal immediately after agentpeers; --from applies only to local sessions.")
     try:
         if args.command == "desktop-wake":
             from .desktop_wake import policy

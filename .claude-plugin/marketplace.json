@@ -1,9 +1,13 @@
 {
   "name": "agentpeers",
-  "owner": {"name": "Agenteer LLC"},
-  "plugins": [{
-    "name": "agentpeers",
-    "source": "./",
-    "description": "Let your Codex and Claude Code sessions talk to each other."
-  }]
+  "owner": {
+    "name": "Agenteer LLC"
+  },
+  "plugins": [
+    {
+      "name": "agentpeers",
+      "source": "./",
+      "description": "The AgentPeers local connection: Claude Code ↔ Codex sessions."
+    }
+  ]
 }

@@ -1,2 +1,2 @@
-"""Small, local bridge for Codex and Claude Code."""
-__version__ = "0.6.2"
+"""Peer messaging between existing AI agents across platforms."""
+__version__ = "0.7.0"
