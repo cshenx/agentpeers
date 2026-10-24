@@ -163,6 +163,34 @@ class ContextBridgeTests(unittest.TestCase):
             self.assertEqual(self.http("POST", "/context/admin", {"action": "enable", "subscription_id": self.sid, "owner_key": key}, origin=origin)[0], 400)
         self.assertFalse(self.app.context.active())
 
+    def test_owner_can_find_receiver_without_callback_or_credential_disclosure(self):
+        self.store.db.execute("INSERT INTO subscriptions VALUES(?,?,?,?,?,?,?,?)",
+                              ("expired-dot", "dot", "https://callbacks.example/expired", "private-expired-key", None, 0, 999, 1))
+        self.store.db.execute("INSERT INTO subscriptions VALUES(?,?,?,?,?,?,?,?)",
+                              ("other-peer", "grokbot", "https://callbacks.example/other", "private-other-key", None, 0, 2000, 1))
+        status, result, *_ = self.admin("status")
+        self.assertEqual(status, 200)
+        self.assertFalse(result["enabled"])
+        self.assertEqual(len(result["available_receivers"]), 1)
+        receiver = result["available_receivers"][0]
+        self.assertEqual(receiver["subscription_id"], self.sid)
+        self.assertEqual(receiver["recipient"], "dot")
+        self.assertEqual(receiver["callback_host"], "callbacks.example")
+        self.assertGreater(receiver["expires_at"], self.now)
+        serialized = json.dumps(result)
+        for private in ("/context-fixture", "whsec_", "private-expired-key", "private-other-key", self.config["owner_key"]):
+            self.assertNotIn(private, serialized)
+        public_page = self.http("GET", "/context/admin")[1]
+        self.assertNotIn(self.sid, public_page)
+        rejected = self.http("POST", "/context/admin", {"action": "status", "owner_key": "wrong"}, origin=self.config["public_url"])
+        self.assertEqual(rejected[0], 400)
+        self.assertNotIn(self.sid, json.dumps(rejected[1]))
+        self.assertEqual(self.store.db.execute("SELECT count(*) FROM messages").fetchone()[0], 0)
+        self.assertIsNone(self.app.context.control())
+        self.assertEqual(self.deliveries, [])
+        self.now = 100000
+        self.assertEqual(self.admin("status")[1]["available_receivers"], [])
+
     def test_missing_or_wrong_session_and_identity_overrides_rejected(self):
         self.setup_trial()
         for meta in ({}, {"openai/subject": "other", "openai/session": self.meta["openai/session"]}, {**self.meta, "openai/session": "other"}):

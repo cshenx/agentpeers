@@ -6,6 +6,7 @@ No TLS identity claim, new credential scheme or ordinary-chat notification.
 """
 import json
 import math
+from urllib.parse import urlsplit
 
 from . import AUTHORITY
 from .config import Rejected, digest, identifier
@@ -111,12 +112,20 @@ class ContextBridge:
 
     def status(self):
         row = self.control()
+        # This result is available only through authenticated owner controls.
+        # Expose selection metadata, never callback URLs or signing credentials.
+        receivers = self.store.db.execute(
+            "SELECT id,url,expires FROM subscriptions WHERE peer='dot' AND active=1 AND expires>? ORDER BY id",
+            (self.store.clock(),)).fetchall()
         return {"enabled": bool(row and row["enabled"]), "oauth_approved": bool(row and row["client"]),
                 "bound": bool(row and row["subject"]),
                 "candidate_subject": row["candidate_subject"] if row else None,
                 "candidate_session": row["candidate_session"] if row else None,
                 "request_count": self.store.db.execute("SELECT count(*) FROM ap_context_requests").fetchone()[0],
-                "limit": 10, "receiver": "dot", "topic": "integration-check"}
+                "limit": 10, "receiver": "dot", "topic": "integration-check",
+                "available_receivers": [{"subscription_id": sub["id"], "recipient": "dot",
+                                         "callback_host": urlsplit(sub["url"]).hostname,
+                                         "expires_at": sub["expires"]} for sub in receivers]}
 
     def _identity(self, metadata):
         row = self.control()
