@@ -197,7 +197,7 @@ The isolated context prototype lets an ordinary ChatGPT requester ask one factua
 
 The requester tools are `request_context` and `context_result`. A saved request returns `pending` with the caller's stable request ID; the same authenticated requesting conversation retrieves its answer explicitly. Pending is not proof of delivery or reading. A completed answer includes the responding receiver, source references and observation times. Source references are receiver assertions; the prototype does not verify their truth or fetch their contents.
 
-This diagram extends the existing architecture proposal. Solid paths inside the prototype are exercised locally. Dashed paths require future integration and approval; existing Dot–Grokbot messaging remains separate.
+This diagram extends the existing architecture proposal. Solid paths inside the prototype are exercised locally. Dashed paths show the proposed first live increment: one requester and the existing Dot receiver. Named Codex delivery is deferred; its fixture remains part of the local tests.
 
 ![Local context contract and proposed live integration](assets/context-requests.svg)
 
@@ -226,16 +226,33 @@ Request IDs are scoped by owner, subject and session. Identical retries return t
 
 Each answer is limited to the necessary facts, up to five source references and their observation times. Peer content remains outside human authority. The interface cannot publish, spend, change access or execute business actions. A receiver must still follow its native authorization rules. Already-persisted canonical facts may be better served by an approved direct knowledge read.
 
-### Before activation
+### First live increment proposed — one requester to Dot
 
-The following work and exact approvals are still required:
+**Not implemented or live-tested.** Trial one fresh ordinary ChatGPT chat, labeled **AgentPeers Context Trial**, using a new role `context-requester-1`. Its only destination is the existing configured peer `dot`, pinned to the already-authorized Dot chat after checking the native listener's actual binding. Named Codex sessions, the coordinator and Grokbot are excluded from this context trial.
 
-1. Verify an official requester identity/role binding and enforce its owner, subject and session at the real transport boundary. Approve the separate requester connection and exact request/result permissions. No production OAuth, credential or access change is included here.
-2. Approve the exact receiver identities, factual topics, source scope and requesting audience. Dot's existing listener and any native coordinator-to-Codex forwarding/return contract need verification; this prototype does not implement or certify those adapters.
-3. Approve the exact candidate deployment, request-store migration/retention/rollback plan and any necessary listener or connection adjustment, while preserving the existing Dot–Grokbot service. No new service or polling monitor is proposed.
-4. Approve one bounded synthetic live acceptance test, naming the originating chat, Dot and any exact Codex session. Prove a correlated sourced return, wrong-owner/subject/session denial, duplicate handling, deadline behavior, and existing-message regression. Local fixture results do not establish these live properties.
+The sole topic is `integration-check`. Ask **“What color is the synthetic AgentPeers trial card?”** Dot's approved saved trial instruction would contain the harmless record **“AgentPeers trial card v1: color = amber”**, source `fixture:agentpeers-trial-card-v1`, with its setup observation time. Return only the color, source, observation time and correlated request ID. No business source, browsing or conversation dump is needed.
 
-Automatic background delivery into ordinary ChatGPT chats is not established. The initial contract is pending plus explicit retrieval; no ordinary-chat wake is promised. The future production route in the diagram remains proposed. Nothing in this section authorizes deployment, publication, connection changes or a live test.
+| Proposed change at the existing service origin | Exact trial boundary |
+| --- | --- |
+| New protected resource `/mcp/context-requester` and its protected-resource metadata | Only `request_context` and `context_result`; OAuth scope `agentpeers:context`. No general messaging, inbox, events or receiver privileges. |
+| Extend the existing owner-approved authorization-code flow with S256 PKCE | Issue a separate requester-role token bound to that resource, an opaque server-side owner/principal and the narrow scope. Existing `/mcp/dot` grants retain their current role and scope. No token or credential is copied between roles. |
+| Authenticate the ChatGPT client, then bind the trial conversation | Verify the OpenAI-managed client certificate at trusted ingress, in addition to the OAuth token. After a no-dispatch handshake, the owner approves exactly one presented `openai/subject` and `openai/session` pair. Missing or changed correlation fails closed. The owner/principal and permission come from the server's OAuth grant, not metadata. |
+| Bridge the request into existing `message.created` delivery for recipient `dot` | Add one internal restricted origin, `context-requester-1 → dot`. Reuse Dot's existing signed callback and claim/read/acknowledge/reply tools. No second subscription or new event name. Dot's saved handler gains only the synthetic-trial handling rule. |
+| Correlate Dot's reply into the request result | Validate one structured factual reply against the stored request and Dot receiver before completing it. The internal requester origin is a result sink with no outbound notification; the ordinary chat retrieves explicitly. |
+
+The OAuth and mTLS recommendation follows the [official authentication contract](https://developers.openai.com/plugins/build/auth). OpenAI documents `openai/subject` as user identification and `openai/session` as conversation correlation in its [plugin reference](https://developers.openai.com/plugins/reference); neither creates a service permission. **The current source does not enforce the proposed client-certificate check. Whether the existing ingress can supply trustworthy verification is an unresolved feasibility gate.** Do not substitute a caller-supplied header, silently relax the check, add a new domain/provider or enable paid ingress. If the current ingress cannot support it within the approved installation, stop and present that exact additional change separately.
+
+Production work still needed is the requester OAuth/transport adapter and owner-confirmed session binding; the internal origin and Dot message/reply bridge; and adaptation of the local context store to the existing Durable Object's transaction interface. The prototype does not currently run in the cloud bundle, notify Dot, parse a real Dot reply or authenticate a real chat. No Codex adapter is included in this increment.
+
+The storage plan is additive `ap_context_*` tables in the existing private Durable Object, with one transaction saving each context request and its linked message. Keep the existing messages, OAuth grants, subscriptions and settings intact. Limit the trial to one bound requester, the single topic, a five-minute fixed deadline, one answer per request and at most ten trial requests. Retain trial records without automatic deletion; stop accepting at the cap. Before any deployment, record the then-current Worker version and verify an existing owner-approved recovery point. Deploy with the context route disabled; enable it only for the approved requester/receiver binding.
+
+Stop/rollback disables the context feature, revokes only the new requester grant and removes its trial binding. Preserve the additive tables and trial evidence. Return to the recorded pretrial Worker version if needed, leaving existing messaging state intact; do not restore an old whole database over newer Dot–Grokbot messages. An in-flight native Dot run cannot be canceled by a rollback and must be inspected rather than replayed. These controls still need implementation and local tests.
+
+The next **local code work** is already within the isolated feature grant: implement the proposed adapters and additive schema behind a disabled feature flag using fake tokens, certificates, metadata and callback transports; verify malformed identity, wrong-session retrieval, duplicates, expiry, reply validation, rollback and existing messaging regressions. This is preparation only.
+
+The later **action-time approval** should name one tested candidate commit and authorize this single bundle: deploy it to the existing service; create/approve the separate requester OAuth connection; bind the selected ordinary chat to the existing Dot receiver; add the narrow origin and synthetic handler rule; and perform one bounded synthetic acceptance run of at most ten requests. The run must prove a sourced return and explicit retrieval, duplicate suppression, expiry, wrong-session denial, and a separately identified harmless Dot–Grokbot regression exchange. It must preserve current peer credentials, callback host allowlists, subscription destination and unrelated tasks. No publication, new service, monitor, source access, plan upgrade or coordinator/Codex routing is part of that approval.
+
+Automatic background delivery into ordinary ChatGPT chats is not established. The contract is pending plus explicit retrieval; no ordinary-chat wake is promised. The dashed route remains proposed until production code, exact approval and actual live receipts exist.
 
 ## References
 
