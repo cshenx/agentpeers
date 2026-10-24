@@ -1,28 +1,20 @@
-// Extends the existing public architecture proposal; no private topology.
+// Public architecture only; no account, deployment or conversation identifiers.
 digraph G {
-  graph [rankdir=TB,bgcolor="white",pad="0.3",nodesep="0.5",ranksep="0.65",
-    label="AgentPeers: one-chat to Dot trial proposal",labelloc=t,fontsize=22,fontname="Arial"];
+  graph [rankdir=TB,bgcolor="white",pad="0.3",nodesep="0.4",ranksep="0.55",
+    label="AgentPeers: factual-context prototype",labelloc=t,fontsize=22,fontname="Arial"];
   node [shape=box,style="rounded,filled",fillcolor="#f6f8fb",color="#67768b",
     fontname="Arial",fontsize=14,margin="0.18,0.12"];
   edge [fontname="Arial",fontsize=11,color="#2c7057",penwidth=1.5];
-  chat [label="One ordinary ChatGPT trial chat\nexplicit result retrieval"];
-  binding [label="LOCAL ADAPTER — not activated\nOAuth + S256 PKCE / requester scope\nowner-pinned conversation correlation",fillcolor="#fff2d5",color="#a77512"];
-  subgraph cluster_local {
-    label="Working local contract — synthetic receivers only";fontname="Arial";color="#bcc7d3";
-    requester [label="Requester tools\nrequest_context / context_result"];
-    store [label="Isolated fixture storage\ncontext tables / linked messages\nowner / grant / session / request ID"];
-    receiver [label="Pinned receiver contract\natomic claim / sourced answer"];
-    fixture [label="Synthetic receiver fixtures\nDot + pinned Codex fixture"];
-    requester -> store [label="save question / retrieve answer",dir=both];
-    store -> receiver [label="pending / processing / completed",dir=both];
-    receiver -> fixture [label="one factual answer + source and time",dir=both];
-  }
-  dot [label="Existing Dot receiver\ntrial topic: integration-check"];
-  bridge [label="LOCAL ADAPTER — not activated\nexisting message.created + scoped reply\nordinary requester is a result sink",fillcolor="#fff2d5",color="#a77512"];
-  chat -> binding [label="future request / explicit retrieval",dir=both,style=dashed,color="#a77512"];
-  binding -> requester [label="OAuth-authorized requester",style=dashed,color="#a77512"];
-  receiver -> bridge [label="future durable request/result",dir=both,style=dashed,color="#a77512"];
-  bridge -> dot [label="future question / sourced answer",dir=both,style=dashed,color="#a77512"];
-  legend [shape=note,fillcolor="white",label="Solid: exercised local fixtures\nDashed: no activation or live proof\nOAuth authenticates; metadata correlates\nNo added mTLS / ingress infrastructure\nNamed Codex delivery deferred\nExisting Dot–Grokbot service preserved\nNo ordinary-chat wake or business actions"];
-  {rank=same;chat;legend;}
+  chat [label="Ordinary ChatGPT chat\nrequest_context / context_result"];
+  oauth [label="Separate requester OAuth grant\nowner-approved conversation binding\nmetadata correlates; bearer authenticates"];
+  service [label="Existing AgentPeers service\nlinked request / message / sourced result\ndeadline + duplicate suppression"];
+  dot [label="Existing Dot receiver\nclaim / read / answer once\nowner-approved factual scope"];
+  chat -> oauth [label="request / explicit result retrieval",dir=both];
+  oauth -> service [label="only two scoped tools",dir=both];
+  service -> dot [label="existing signed message.created / sourced reply",dir=both];
+  status [shape=note,fillcolor="#fff2d5",color="#a77512",
+    label="Private synthetic Dot round trip verified\nValidation grant closed; adapter disabled by default\nGeneral factual-question setup still to implement\nNo ordinary-chat wake or business-action authority"];
+  fixture [shape=note,label="Separate runnable local fixtures\nDot and exact named Codex receiver contract\nNo live Codex context adapter"];
+  service -> status [style=dotted,arrowhead=none];
+  fixture -> service [style=dotted,arrowhead=none,label="contract tests"];
 }
