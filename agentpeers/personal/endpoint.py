@@ -1,5 +1,6 @@
 """Shared bounded HTTP routing for self-hosted and cloud deployments."""
 import html
+import hmac
 import json
 import re
 from urllib.parse import parse_qs, urlsplit
@@ -59,6 +60,9 @@ class Endpoint:
             parsed = urlsplit(self.path)
             path = parsed.path
             base = self.app.store.config["public_url"]
+            if path == "/context/admin":
+                body = '<!doctype html><meta charset="utf-8"><title>AgentPeers context trial</title><h1>One-chat context trial</h1><p>Owner control only. Verify the existing Dot listener before enabling. Status displays correlation candidates; bind the exact intended pair. Disabling preserves evidence and revokes only requester grants.</p><form method="post" action="/context/admin"><input name="owner_key" type="password" required autocomplete="off"><input name="action" value="status"><input name="subscription_id" placeholder="Existing Dot subscription ID"><input name="subject" placeholder="Candidate subject"><input name="session" placeholder="Candidate session"><button>Apply owner action</button></form>'
+                return self.output(200, body, {"Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", "Referrer-Policy": "strict-origin"}, "text/html; charset=utf-8")
             if path == "/health":
                 return self.output(503 if self.app.worker_warning else 200, {"service": "AgentPeers", "delivery_verified": False, "worker_warning": self.app.worker_warning})
             if path == "/.well-known/oauth-authorization-server":
@@ -67,12 +71,17 @@ class Endpoint:
             if path.startswith(prefix):
                 resource = base + "/mcp/" + path[len(prefix):]
                 self.app.oauth.resource_peer(resource)
-                return self.output(200, {"resource": resource, "authorization_servers": [base], "scopes_supported": ["agentpeers:messages"]})
+                return self.output(200, {"resource": resource, "authorization_servers": [base], "scopes_supported": [self.app.oauth.scope(resource)]})
             if path == "/oauth/authorize":
                 self.app.limit(self.source, path)
                 args = form(parsed.query.encode())
                 self.app.oauth.validate_authorize(args)
                 peer = self.app.oauth.resource_peer(args["resource"])
+                if peer == "context-requester-1":
+                    fields = {**args, "csrf": self.app.oauth.csrf(args)}
+                    hidden = "".join('<input type="hidden" name="%s" value="%s">' % (html.escape(k, quote=True), html.escape(v, quote=True)) for k, v in fields.items())
+                    body = '<!doctype html><meta charset="utf-8"><title>Approve context requester</title><h1>Approve one context requester</h1><p>Only the synthetic card question to Dot and explicit result retrieval. This connection cannot access Dot\'s general inbox, send general messages, subscribe or administer the service. Owner must separately bind the originating conversation.</p><form method="post" action="/oauth/authorize">%s<input name="owner_key" type="password" required autocomplete="off"><button>Allow synthetic context trial</button></form>' % hidden
+                    return self.output(200, body, {"Referrer-Policy": "strict-origin", "Content-Security-Policy": "default-src 'none'; form-action 'self' https://%s; frame-ancestors 'none'; base-uri 'none'" % urlsplit(args["redirect_uri"]).hostname}, "text/html; charset=utf-8")
                 # Chromium applies form-action to the 303 return as well as the
                 # POST. Permit only this validated client's owner-approved host;
                 # the password POST itself still goes to our same-origin route.
@@ -106,6 +115,14 @@ class Endpoint:
                         raise Rejected("Owner authorization requires the same HTTPS origin")
                     destination = self.app.oauth.authorize(args)
                     return self.output(303, headers={"Location": destination})
+            if path == "/context/admin":
+                self.app.limit(self.source, path)
+                if self.headers.get("Origin") != self.app.store.config["public_url"]:
+                    raise Rejected("Owner control requires the same HTTPS origin")
+                args = self.read_body()
+                if not isinstance(args.get("owner_key"), str) or not hmac.compare_digest(args["owner_key"], self.app.store.config["owner_key"]):
+                    raise Rejected("Owner approval failed")
+                return self.output(200, self.app.context.admin(args))
             if path.startswith("/mcp/"):
                 resource = self.app.store.config["public_url"] + path
                 actor = self.auth(resource)
@@ -125,7 +142,8 @@ class Endpoint:
             headers = {}
             if unauthorized and resource:
                 metadata = self.app.store.config["public_url"] + "/.well-known/oauth-protected-resource" + path
-                headers["WWW-Authenticate"] = 'Bearer resource_metadata="%s", scope="agentpeers:messages"' % metadata
+                scope = "agentpeers:context" if path == "/mcp/context-requester" else "agentpeers:messages"
+                headers["WWW-Authenticate"] = 'Bearer resource_metadata="%s", scope="%s"' % (metadata, scope)
             return self.output(401 if unauthorized else 400, {"error": str(exc)}, headers)
         except Exception:
             return self.output(400, {"error": "Invalid request"})

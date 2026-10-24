@@ -17,7 +17,7 @@ class Mailbox(RealMailbox):
         if path == '/test/reset':
             await self.ctx.storage.deleteAlarm()
             self.db.execute('CREATE TABLE IF NOT EXISTS fixture_deliveries(seq INTEGER PRIMARY KEY,payload TEXT,headers TEXT)')
-            for table in ('messages','conversations','subscriptions','audit','oauth_clients','oauth_codes','oauth_tokens','ap_limits','ap_subscription_status','ap_settings','fixture_deliveries'):
+            for table in ('ap_context_control','ap_context_requests','messages','conversations','subscriptions','audit','oauth_clients','oauth_codes','oauth_tokens','ap_limits','ap_subscription_status','ap_settings','fixture_deliveries'):
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone():
                     self.db.execute('DELETE FROM ' + table)
             self.app = None

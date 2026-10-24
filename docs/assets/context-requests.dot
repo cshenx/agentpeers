@@ -6,11 +6,11 @@ digraph G {
     fontname="Arial",fontsize=14,margin="0.18,0.12"];
   edge [fontname="Arial",fontsize=11,color="#2c7057",penwidth=1.5];
   chat [label="One ordinary ChatGPT trial chat\nexplicit result retrieval"];
-  binding [label="PROPOSED requester resource\nOAuth role + verified ChatGPT client\nowner-approved session binding",fillcolor="#fff2d5",color="#a77512"];
+  binding [label="LOCAL ADAPTER — not activated\nOAuth + S256 PKCE / requester scope\nowner-pinned conversation correlation",fillcolor="#fff2d5",color="#a77512"];
   subgraph cluster_local {
     label="Working local contract — synthetic receivers only";fontname="Arial";color="#bcc7d3";
     requester [label="Requester tools\nrequest_context / context_result"];
-    store [label="Separate fixture request store\nowner / subject / session / request ID"];
+    store [label="Isolated fixture storage\ncontext tables / linked messages\nowner / grant / session / request ID"];
     receiver [label="Pinned receiver contract\natomic claim / sourced answer"];
     fixture [label="Synthetic receiver fixtures\nDot + pinned Codex fixture"];
     requester -> store [label="save question / retrieve answer",dir=both];
@@ -18,11 +18,11 @@ digraph G {
     receiver -> fixture [label="one factual answer + source and time",dir=both];
   }
   dot [label="Existing Dot receiver\ntrial topic: integration-check"];
-  bridge [label="PROPOSED request/reply bridge\nexisting message.created + scoped reply\nordinary requester is a result sink",fillcolor="#fff2d5",color="#a77512"];
+  bridge [label="LOCAL ADAPTER — not activated\nexisting message.created + scoped reply\nordinary requester is a result sink",fillcolor="#fff2d5",color="#a77512"];
   chat -> binding [label="future request / explicit retrieval",dir=both,style=dashed,color="#a77512"];
-  binding -> requester [label="verified requester identity",style=dashed,color="#a77512"];
+  binding -> requester [label="OAuth-authorized requester",style=dashed,color="#a77512"];
   receiver -> bridge [label="future durable request/result",dir=both,style=dashed,color="#a77512"];
   bridge -> dot [label="future question / sourced answer",dir=both,style=dashed,color="#a77512"];
-  legend [shape=note,fillcolor="white",label="Solid: exercised local fixtures\nDashed: not implemented or live-tested\nClient-verification feasibility unresolved\nNamed Codex delivery deferred\nExisting Dot–Grokbot service preserved\nNo ordinary-chat wake or business actions"];
+  legend [shape=note,fillcolor="white",label="Solid: exercised local fixtures\nDashed: no activation or live proof\nOAuth authenticates; metadata correlates\nNo added mTLS / ingress infrastructure\nNamed Codex delivery deferred\nExisting Dot–Grokbot service preserved\nNo ordinary-chat wake or business actions"];
   {rank=same;chat;legend;}
 }

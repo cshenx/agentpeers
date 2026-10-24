@@ -15,6 +15,10 @@ class OAuth:
         self.store = store
 
     def resource_peer(self, resource):
+        from .context_bridge import ORIGIN
+        context = getattr(self.store, "context", None)
+        if context and resource == context.resource and "context-requester" not in self.store.config["peers"]:
+            return ORIGIN
         base = self.store.config["public_url"] + "/mcp/"
         if not isinstance(resource, str) or not resource.startswith(base):
             raise Rejected("Unknown OAuth resource")
@@ -23,13 +27,19 @@ class OAuth:
             raise Rejected("OAuth resource must select a configured Dot peer")
         return peer
 
+    def scope(self, resource):
+        from .context_bridge import SCOPE
+        self.resource_peer(resource)
+        context = getattr(self.store, "context", None)
+        return SCOPE if context and resource == context.resource and "context-requester" not in self.store.config["peers"] else "agentpeers:messages"
+
     def metadata(self):
         base = self.store.config["public_url"]
         return {"issuer": base, "authorization_endpoint": base + "/oauth/authorize", "token_endpoint": base + "/oauth/token",
                 "registration_endpoint": base + "/oauth/register", "revocation_endpoint": base + "/oauth/revoke",
                 "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"],
                 "token_endpoint_auth_methods_supported": ["none"], "code_challenge_methods_supported": ["S256"],
-                "scopes_supported": ["agentpeers:messages"], "authorization_response_iss_parameter_supported": True}
+                "scopes_supported": ["agentpeers:messages"] + (["agentpeers:context"] if getattr(self.store, "context", None) and self.store.context.active() else []), "authorization_response_iss_parameter_supported": True}
 
     def register(self, args):
         redirects = args.get("redirect_uris", [])
@@ -56,8 +66,10 @@ class OAuth:
         self.resource_peer(args.get("resource"))
         if args.get("response_type") != "code" or args.get("code_challenge_method") != "S256" or not re.fullmatch(r"[A-Za-z0-9_-]{43}", args.get("code_challenge", "")):
             raise Rejected("Authorization code with S256 PKCE is required")
-        if args.get("scope", "agentpeers:messages") != "agentpeers:messages":
-            raise Rejected("Only agentpeers:messages scope is available")
+        if args.get("scope", "agentpeers:messages") != self.scope(args["resource"]):
+            raise Rejected("Scope must match the exact protected resource")
+        if self.scope(args["resource"]) == "agentpeers:context" and not self.store.context.active():
+            raise Rejected("Context trial is disabled")
         if len(args.get("state", "")) > 2000:
             raise Rejected("State too large")
 
@@ -80,7 +92,11 @@ class OAuth:
         code = secrets.token_urlsafe(32)
         with self.store.lock:
             self.store.db.execute("DELETE FROM oauth_codes WHERE expires<=?", (self.store.clock(),))
-            self.store.db.execute("INSERT INTO oauth_codes VALUES(?,?,?,?,?,?)", (digest(code), args["client_id"], args["redirect_uri"], args["code_challenge"], args["resource"], self.store.clock() + 120))
+            def issue():
+                if self.scope(args["resource"]) == "agentpeers:context":
+                    self.store.context.authorize_client(args["client_id"])
+                self.store.db.execute("INSERT INTO oauth_codes VALUES(?,?,?,?,?,?)", (digest(code), args["client_id"], args["redirect_uri"], args["code_challenge"], args["resource"], self.store.clock() + 120))
+            self.store.transaction(issue)
         return args["redirect_uri"] + ("&" if "?" in args["redirect_uri"] else "?") + urlencode({"code": code, "state": args.get("state", ""), "iss": self.store.config["public_url"]})
 
     def token(self, args):
@@ -109,7 +125,7 @@ class OAuth:
                 self.store.db.execute("INSERT INTO oauth_tokens VALUES(?,?,?,?,?)", (digest(access), client, resource, "access", now + 3600))
                 self.store.db.execute("INSERT INTO oauth_tokens VALUES(?,?,?,?,?)", (digest(refresh), client, resource, "refresh", now + 30 * 86400))
             self.store.transaction(rotate)
-        return {"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh, "scope": "agentpeers:messages"}
+        return {"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh, "scope": self.scope(resource)}
 
     def actor(self, token, resource=None):
         # Direct bearer keys are distinct per peer. MCP OAuth tokens cannot call another peer's endpoint.
@@ -122,6 +138,8 @@ class OAuth:
         with self.store.lock:
             row = self.store.db.execute("SELECT * FROM oauth_tokens WHERE hash=? AND kind='access' AND expires>?", (digest(token), self.store.clock())).fetchone()
         if not row or row["resource"] != resource:
+            raise Rejected("Unauthorized")
+        if self.scope(resource) == "agentpeers:context" and not self.store.context.token_client_allowed(row["client"]):
             raise Rejected("Unauthorized")
         return peer_id
 

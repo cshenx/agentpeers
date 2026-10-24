@@ -48,6 +48,12 @@ CONTEXT_TOOLS = [
          {"request_id": STRING}, ["request_id"], readonly=True),
 ]
 
+for definition in CONTEXT_TOOLS:
+    definition["securitySchemes"] = [{"type": "oauth2", "scopes": ["agentpeers:context"]}]
+    definition["_meta"] = {"securitySchemes": definition["securitySchemes"]}
+    definition["outputSchema"] = {"type": "object", "properties": {"request_id": STRING, "state": STRING},
+                                  "required": ["request_id", "state"], "additionalProperties": True}
+
 
 def bounded(value, name, maximum=200):
     if not isinstance(value, str) or not value.strip() or len(value.encode()) > maximum:

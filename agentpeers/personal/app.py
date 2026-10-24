@@ -6,6 +6,7 @@ from .. import __version__
 from . import AUTHORITY
 from .adapters import Dispatcher, Events, post_https
 from .auth import OAuth
+from .context_bridge import ContextBridge, ORIGIN
 from .config import Rejected, digest
 from .protocol import Protocol, TOOLS
 from .transport import run
@@ -14,6 +15,7 @@ from .transport import run
 class App:
     def __init__(self, store, post=post_https, rate_lock=None):
         self.store = store
+        self.context = store.context = ContextBridge(store)
         self.oauth = OAuth(store)
         self.events = Events(store, post)
         self.protocol = Protocol(store, self.events)
@@ -28,7 +30,7 @@ class App:
             self.rates = {k: v for k, v in self.rates.items() if now - v[0] < 60}
             key = (source, action)
             started, count = self.rates.get(key, (now, 0))
-            ceiling = 10 if action == "/oauth/authorize" else 60
+            ceiling = 10 if action in ("/oauth/authorize", "/context/admin") else 60
             if count >= ceiling or len(self.rates) > 10000:
                 raise Rejected("Request limit reached; wait before trying again")
             self.rates[key] = (started, count + 1)
@@ -37,6 +39,8 @@ class App:
         return run(self.rpc_steps(actor, request), self.events.post)
 
     def rpc_steps(self, actor, request):
+        if actor == ORIGIN and actor not in self.store.config["peers"]:
+            return self.context.rpc(request)
         mid = request.get("id")
         if mid is None:
             return None
