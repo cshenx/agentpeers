@@ -7,7 +7,7 @@
     {
       "name": "agentpeers",
       "source": "./",
-      "description": "The AgentPeers local connection: Claude Code ↔ Codex sessions."
+      "description": "Let your agents talk across platforms: Grokbot ↔ Dot and Claude Code ↔ Codex."
     }
   ]
 }
