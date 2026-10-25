@@ -10,7 +10,9 @@ Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Ask one agent to shar
 
 **[Connect Claude Code + Codex →](docs/coding-sessions.md)**
 
-Two connections, each with its own setup: personal agents use a service in your Cloudflare account or on your server; coding sessions use a plugin on the same Mac.
+**[Preview factual questions from ChatGPT to Dot →](docs/context-requests.md)**
+
+Two connections, each with its own setup: personal agents use a service in your Cloudflare account or on your server; coding sessions use a plugin on the same Mac. The factual-context candidate adds separately approved ChatGPT questions to the personal-agent service.
 
 [Try a conversation](#try-a-conversation) · [Get started](#get-started) · [Compatibility](#tested-connections) · [How it works](#how-it-works) · [Contribute](CONTRIBUTING.md)
 
@@ -23,6 +25,12 @@ Your research is in Grokbot. You want Dot's perspective before deciding what to 
 > Send Dot the three strongest findings from our research. Ask which conclusion it would challenge, and discuss its answer.
 
 Either agent can start, answer and ask a relevant follow-up. The reply comes back to the agent that asked, without a coding session relaying the conversation.
+
+### Ask Dot what it already knows about your project
+
+You are in an ordinary ChatGPT chat and need project context from Dot. The separate factual-context connection lets that chat ask a question on a topic you approve, then retrieve Dot’s answer with its sources. It does not give the chat Dot’s inbox or permission to act.
+
+**0.8 development candidate:** live acceptance is still pending. [See the setup and access controls](docs/context-requests.md).
 
 ### Let Claude Code ask the Codex session that owns the frontend
 
@@ -80,6 +88,7 @@ Requires macOS, Python 3.10+ and the native receiving interfaces described in th
 | Connection | Status | Verified experience |
 | --- | --- | --- |
 | **Grokbot ↔ Dot** | **New · 0.7 preview** | Real cloud conversations initiated by each agent, with replies and follow-ups. Grok Bot **0.75.0** and Dot on ChatGPT web using MCP Events **2026-07-28**; checked October 22, 2026. [Setup and evidence](docs/personal-agents.md). |
+| **Ordinary ChatGPT → Dot factual questions** | 0.8 development candidate | Topic, source, chat permission and answer retrieval pass the native runtime tests. Live acceptance is pending; named Codex context is not implemented. [Setup](docs/context-requests.md). |
 | **Claude Code terminal ↔ Codex terminal** | Local plugin | Questions and replies in both directions. Claude Code **2.1.303**, Codex CLI **0.163.0**; checked October 19, 2026. [Versions and setup](docs/coding-sessions.md#tested-codex-and-claude-code-connections). |
 | **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
 | **Grokbot ↔ Dot on your own server** | Preview · fixture-tested | HTTP and proxy tests pass; a live public self-hosted installation has not been verified. [Server setup](docs/personal-agents.md#run-on-your-own-server). |
@@ -96,6 +105,7 @@ flowchart LR
         G["Grokbot"] <--> P["AgentPeers service<br/>your cloud account or server"]
         P <--> D["Dot"]
     end
+    Q["Ordinary ChatGPT chat<br/>separate factual access · 0.8 candidate"] -->|"approved topic only"| P
     subgraph coding["Coding sessions · same Mac"]
         A["Claude Code terminal"] <--> L["AgentPeers local plugin"]
         L <--> C["Codex terminal / desktop"]
@@ -122,6 +132,7 @@ Messages live outside private agent databases. Local storage is private to your 
 
 - [Claude Code + Codex](docs/coding-sessions.md): installation, desktop wake, versions, message status, upgrades and troubleshooting.
 - [Grokbot + Dot](docs/personal-agents.md): preview setup, Cloudflare and self-hosting, receiving connections and recovery.
+- [Ask Dot from ChatGPT](docs/context-requests.md): the 0.8 factual-context candidate, topic and source controls, one-chat pairing and explicit answer retrieval.
 - [Contributing](CONTRIBUTING.md): development, tests and adding a native platform adapter. Muse and Duet are planned; contributions to additional platforms are welcome.
 - [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/cshenx/agentpeers/issues) · [Security reports](SECURITY.md).
 
