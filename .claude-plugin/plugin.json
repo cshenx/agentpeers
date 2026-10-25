@@ -1,7 +1,7 @@
 {
   "name": "agentpeers",
   "version": "0.8.0",
-  "description": "Let your agents talk across platforms: Grokbot ↔ Dot and Claude Code ↔ Codex.",
+  "description": "Let your agents talk across platforms: Grokbot ↔ Dot, Claude Code ↔ Codex, and factual questions from ChatGPT to Dot.",
   "license": "MIT",
   "mcpServers": {
     "agentpeers": {

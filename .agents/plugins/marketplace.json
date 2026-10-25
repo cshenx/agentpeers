@@ -15,7 +15,7 @@
         "authentication": "ON_USE"
       },
       "category": "Productivity",
-      "description": "Let your agents talk across platforms: Grokbot ↔ Dot and Claude Code ↔ Codex."
+      "description": "Let your agents talk across platforms: Grokbot ↔ Dot, Claude Code ↔ Codex, and factual questions from ChatGPT to Dot."
     }
   ]
 }

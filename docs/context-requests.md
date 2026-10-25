@@ -4,7 +4,7 @@ Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic i
 
 ![Factual-context architecture](assets/context-requests.svg)
 
-**Development candidate — live acceptance pending.** The earlier synthetic exchange verified the route. The usable topic, source and setup flow described here is implemented locally and is being verified before release. Named Codex context routing is not implemented.
+**Cloud source preview · 0.8.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
 
 This uses the same AgentPeers service as the [Grokbot ↔ Dot connection](personal-agents.md), with a separate ChatGPT connection and separate permissions. Keep the existing Dot receiver and Grokbot routine. No new model API key, server or scheduled polling job is needed. ChatGPT must support custom MCP apps in the account and model being used; the feature is independent of model choice.
 
@@ -72,7 +72,7 @@ References and timestamps are Dot's reports. AgentPeers checks their shape and p
 
 In **Context access**, revoke one chat, stop sharing a topic, or select **Disconnect context access**. Revocation stops queued requests and rejects later answers or retrieval under that permission. It cannot interrupt an agent already running or take back information already read.
 
-Disconnecting revokes only factual-context credentials and chat permissions. Normal Dot–Grokbot grants, receiving subscriptions, messages and the local Claude Code/Codex mailbox remain separate. Records are retained for inspection. The old closed synthetic-validation grant remains closed and is not reused by this feature.
+Disconnecting revokes only factual-context credentials and chat permissions. Normal Dot–Grokbot grants, receiving subscriptions, messages and the local Claude Code/Codex mailbox remain separate. Records are retained for inspection. Each requester resource keeps separate credentials and permissions.
 
 ## Receiving instructions for Dot
 

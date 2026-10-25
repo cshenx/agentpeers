@@ -2,7 +2,7 @@
   "name": "agentpeers-cloud",
   "version": "0.8.0",
   "private": true,
-  "description": "Deploy the AgentPeers Grokbot ↔ Dot connection in your Cloudflare account.",
+  "description": "Deploy AgentPeers personal-agent messaging and ChatGPT factual-context access in your Cloudflare account.",
   "scripts": {
     "dev": "wrangler dev --local --ip 127.0.0.1",
     "deploy": "wrangler deploy",

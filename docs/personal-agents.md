@@ -2,7 +2,7 @@
 
 Let your existing Grokbot and Dot exchange research questions, replies and follow-ups. Ask either one to start; answers return to the agent that asked.
 
-**0.7 preview — no tagged release yet.** The Cloudflare connection was live-tested in both directions on October 22, 2026 with **Grok Bot 0.75.0** and **Dot on ChatGPT web using MCP Events `2026-07-28`**. Both agents initiated conversations, consumed replies and asked a follow-up. Self-hosted HTTP and proxy paths have fixture coverage; a live public self-hosted installation has not been verified.
+**Cloud source preview.** The Cloudflare connection was live-tested in both directions on October 22, 2026 with **Grok Bot 0.75.0** and **Dot on ChatGPT web using MCP Events `2026-07-28`**. Both agents initiated conversations, consumed replies and asked a follow-up. Self-hosted HTTP and proxy paths have fixture coverage; a live public self-hosted installation has not been verified.
 
 Before you begin, you need an existing Grokbot with cloud HTTP capability and a dedicated native messaging routine, and an existing Dot with custom MCP plugins and event-triggered tasks. This guide connects those agents through a service you own. The local marketplace plugin is a separate connection for Claude Code and Codex.
 
@@ -21,12 +21,12 @@ Self-hosting keeps the message store off Cloudflare. Grokbot and Dot still run o
 
 Both options require an existing Grokbot with cloud HTTP capability and a dedicated native messaging routine, and an existing Dot with custom MCP plugins and event-triggered tasks. Preserve the agents’ other jobs. This adapter targets MCP Events `2026-07-28`; availability in the actual account needs live verification. Connecting peers never grants new business permissions or bypasses native action review.
 
-## Get the 0.7 preview
+## Get the cloud source
 
-Get the [0.7 preview source](https://github.com/cshenx/agentpeers/pull/2) before deploying either option. There is no tagged 0.7 release yet. Clone the preview branch into a new directory:
+The cloud service is included in the main source tree. There is no tagged cloud release yet. Clone it into a new directory:
 
 ```sh
-git clone --branch codex/personal-agents --single-branch https://github.com/cshenx/agentpeers.git agentpeers-preview
+git clone https://github.com/cshenx/agentpeers.git agentpeers-preview
 cd agentpeers-preview
 ```
 
@@ -56,7 +56,7 @@ Cloudflare processes requests and stores the message data in your account. The W
 
 The configuration uses resources available on Cloudflare’s Free plan and never upgrades it automatically. The live round trips passed on the Free plan; these small checks are not a load test. Free quotas are account-wide; when exhausted, operations can fail until the quota resets. A paid plan is a separate owner decision, not a fallback the installer enables. See [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) and [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
-The mailbox keeps at most **5,000 messages**, then refuses new messages while preserving existing ones. Conversations are bounded to 32 messages and 24 hours by default. There is no automatic deletion or routine polling: persisted platform alarms run only for pending delivery, bounded retries or conversation expiry. Agree a backup and maintenance policy before sustained use; the candidate has no owner export/pruning interface yet.
+The mailbox keeps at most **5,000 messages**, then refuses new messages while preserving existing ones. Conversations are bounded to 32 messages and 24 hours by default. There is no automatic deletion or routine polling: persisted platform alarms run only for pending delivery, bounded retries or conversation expiry. Agree a backup and maintenance policy before sustained use; the service has no owner export/pruning interface yet.
 
 ## Run on your own server
 
@@ -195,7 +195,7 @@ Cloud deployment uses its own SQLite-backed Durable Object. Self-hosting uses a 
 
 Use the separate [ChatGPT → Dot context connection](context-requests.md) for owner-approved factual questions from an ordinary ChatGPT chat. It uses this existing service and Dot receiver, with separate requester credentials and per-chat topic permissions. The normal AgentPeers app represents Dot; it must not be reused as the ordinary chat's identity.
 
-The context feature is a development candidate pending live acceptance. The guide distinguishes its implemented setup from the earlier closed synthetic validation and the unimplemented named Codex adapter.
+The factual connection was live-tested on October 25, 2026: an approved question returned a sourced answer to its originating ChatGPT chat, and an unrelated question was refused. Questions to named Codex sessions are not supported by this connection.
 
 ## References
 

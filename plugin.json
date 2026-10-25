@@ -2,15 +2,15 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agentpeers",
   "version": "0.8.0",
-  "description": "Let your agents talk across platforms: Grokbot ↔ Dot and Claude Code ↔ Codex.",
+  "description": "Let your agents talk across platforms: Grokbot ↔ Dot, Claude Code ↔ Codex, and factual questions from ChatGPT to Dot.",
   "license": "MIT",
   "extensions": {
     "com.openai": {
       "onboardingSkill": "./skills/setup/SKILL.md",
       "interface": {
         "displayName": "AgentPeers",
-        "shortDescription": "Connect Grokbot + Dot and Claude Code + Codex",
-        "longDescription": "Let Grokbot and Dot compare notes, and let Claude Code and Codex coordinate work without relaying messages yourself. This plugin installs the local Claude Code ↔ Codex connection on one Mac. Grokbot ↔ Dot uses a separate service you deploy in your Cloudflare account or on your server; follow the project setup guide. Personal-agent and coding-session connections are separate. Installing this plugin does not deploy the personal-agent service.",
+        "shortDescription": "Connect your agents and ask Dot from ChatGPT",
+        "longDescription": "Let Grokbot and Dot compare notes, let Claude Code and Codex coordinate work, and ask Dot approved factual questions from ordinary ChatGPT chats. This plugin installs the local Claude Code ↔ Codex connection on one Mac. Personal-agent conversations and ChatGPT factual access use a separate service you deploy in your Cloudflare account or on your server; follow the project setup guides. Installing this plugin does not deploy that service.",
         "category": "Productivity"
       }
     }
