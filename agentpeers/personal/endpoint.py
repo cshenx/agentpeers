@@ -7,6 +7,10 @@ from urllib.parse import parse_qs, urlsplit
 from .config import Rejected
 from .context_ui import POLICY as CONTEXT_POLICY
 
+# no-referrer makes Chromium send Origin:null on a same-origin form POST.
+# Keep the exact-origin check and send only the service origin as referrer.
+CONTEXT_HEADERS = {"Content-Security-Policy": CONTEXT_POLICY, "Referrer-Policy": "strict-origin"}
+
 
 def form(raw):
     fields = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=30)
@@ -63,7 +67,7 @@ class Endpoint:
             base = self.app.store.config["public_url"]
             if path == "/context":
                 return self.output(200, self.app.context_ui.page(self.headers),
-                                   {"Content-Security-Policy": CONTEXT_POLICY, "Referrer-Policy": "no-referrer"}, "text/html; charset=utf-8")
+                                   CONTEXT_HEADERS, "text/html; charset=utf-8")
             if path == "/context/admin":
                 body = '<!doctype html><meta charset="utf-8"><title>AgentPeers context trial</title><h1>One-chat context trial</h1><p>Owner control only. Check status first for active Dot receiver IDs and expiry. Verify the intended Dot listener, then use its exact subscription ID when enabling. Status also displays correlation candidates; bind the exact intended pair. Disabling preserves evidence and revokes only requester grants.</p><form method="post" action="/context/admin"><label>Your AgentPeers password <input name="owner_key" type="password" required autocomplete="off"></label><label>Action <input name="action" value="status"></label><label>Existing Dot subscription ID <input name="subscription_id"></label><label>Candidate subject <input name="subject"></label><label>Candidate session <input name="session"></label><button>Apply owner action</button></form>'
                 return self.output(200, body, {"Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", "Referrer-Policy": "strict-origin"}, "text/html; charset=utf-8")
@@ -142,7 +146,7 @@ class Endpoint:
                     try:
                         cookie = ui.login(args.get("owner_key"))
                     except Rejected as exc:
-                        return self.output(400, ui.page(self.headers, str(exc)), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
+                        return self.output(400, ui.page(self.headers, str(exc)), CONTEXT_HEADERS, "text/html; charset=utf-8")
                     return self.output(303, headers={"Location": "/context", "Set-Cookie": cookie})
                 if not ui.authenticated(self.headers):
                     return self.output(303, headers={"Location": "/context"})
@@ -151,13 +155,13 @@ class Endpoint:
                 try:
                     self.app.factual.admin(args)
                 except Rejected as exc:
-                    return self.output(400, ui.page(self.headers, str(exc)), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
+                    return self.output(400, ui.page(self.headers, str(exc)), CONTEXT_HEADERS, "text/html; charset=utf-8")
                 notices = {"save_policy": "Allowed topic saved. Connect AgentPeers Context in ChatGPT, then ask your factual question.",
                            "allow_chat": "Chat allowed. Return to the intended ChatGPT chat and tell it to continue its existing request. No question was sent by this page.",
                            "revoke_chat": "Chat access revoked. Its records are preserved; an agent already running cannot be interrupted here.",
                            "disable_topic": "Topic disabled and its chat access revoked. Records are preserved.",
                            "disconnect": "Context access disconnected. Normal Dot–Grokbot messaging is unchanged."}
-                return self.output(200, ui.page(self.headers, message=notices[args["action"]]), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
+                return self.output(200, ui.page(self.headers, message=notices[args["action"]]), CONTEXT_HEADERS, "text/html; charset=utf-8")
             if path == "/context/admin":
                 self.app.limit(self.source, path)
                 if self.headers.get("Origin") != self.app.store.config["public_url"]:

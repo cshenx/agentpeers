@@ -277,6 +277,20 @@ class FactualTests(unittest.TestCase):
         self.assertEqual(self.owner_action('disconnect')[0],303)
         self.assertTrue(self.app.factual.active())
 
+    def test_every_owner_form_preserves_browser_origin_without_relaxing_validation(self):
+        page=self.http('GET','/context')
+        self.assertEqual(page[2]['Referrer-Policy'],'strict-origin')
+        rejected=self.http('POST','/context/login',{'owner_key':self.config['owner_key']},origin='null')
+        self.assertEqual(rejected[0],400)
+        bad=self.http('POST','/context/login',{'owner_key':'wrong'},origin=self.config['public_url'])
+        self.assertEqual(bad[0],400)
+        self.assertEqual(bad[2]['Referrer-Policy'],'strict-origin')
+        self.prepare()
+        for action,fields,status in [('save_policy',self.policy,200),('unknown',{},400)]:
+            response=self.owner_action(action,**fields)
+            self.assertEqual(response[0],status)
+            self.assertEqual(response[2]['Referrer-Policy'],'strict-origin')
+
     def test_owner_html_escapes_scope_question_and_never_displays_credentials(self):
         self.prepare(bind=False)
         self.value('request_context',{**self.question,'question':'<script>bad()</script>'})

@@ -138,6 +138,10 @@ class CloudRuntime(unittest.TestCase):
 
     def test_factual_owner_setup_request_answer_restart_and_resource_only_disconnect(self):
         dot=self.connect_dot();self.subscribe(dot)
+        self.assertEqual(self.request('GET','/context')[1]['Referrer-Policy'],'strict-origin')
+        wrong=self.request('POST','/context/login',{'owner_key':'wrong'},headers={'Origin':'https://bridge.example'})
+        self.assertEqual(wrong[0],400)
+        self.assertEqual(wrong[1]['Referrer-Policy'],'strict-origin')
         _,_,receiving=self.request('POST','/status',urlencode({'owner_key':'o'*40}),headers={'Content-Type':'application/x-www-form-urlencoded','Origin':'http://127.0.0.1:'+str(self.port)})
         # The fixture's normal event subscription supplies the actual saved ID.
         subscription=self.rpc(dot,'events/subscribe',{'name':'message.created','arguments':{'recipient':'dot'},'delivery':{'mode':'webhook','url':'https://callbacks.example/event','secret':'whsec_'+base64.b64encode(b'k'*32).decode()}})['id']
@@ -145,7 +149,9 @@ class CloudRuntime(unittest.TestCase):
         self.assertEqual(status,303)
         owner={'Origin':'https://bridge.example','Cookie':headers['Set-Cookie'].split(';')[0]}
         policy={'action':'save_policy','topic':'project','scope':'Fixture project status only; no business actions.','refs':'fixture:project','subscription':subscription}
-        self.assertEqual(self.request('POST','/context/actions',policy,headers=owner)[0],200)
+        saved=self.request('POST','/context/actions',policy,headers=owner)
+        self.assertEqual(saved[0],200)
+        self.assertEqual(saved[1]['Referrer-Policy'],'strict-origin')
         requester=self.connect_dot('/mcp/context','agentpeers:facts')
         metadata={'openai/subject':'cloud-factual-owner','openai/session':'cloud-factual-chat'}
         question={'request_id':'cloud-facts','destination':'Dot','topic':'project','question':'Which project component is ready?'}
