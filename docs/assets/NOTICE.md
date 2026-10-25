@@ -1,6 +1,6 @@
 # README artwork
 
-The hero identifies the products AgentPeers connects. It depicts two separate pairs, not an endorsement or a connection between every product shown.
+The hero identifies the products AgentPeers connects. It depicts personal-agent messaging, local coding-session messaging and approved factual questions from ChatGPT to Dot. Each has separate setup and permissions. It does not imply endorsement or a connection between every product shown.
 
 | Asset | Source |
 | --- | --- |

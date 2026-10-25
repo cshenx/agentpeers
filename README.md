@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/agentpeers-hero.png" alt="AgentPeers: Grokbot talks to Dot; Claude Code talks to Codex on the same Mac. Two-way connections between your existing agents." width="1200" />
+  <img src="docs/assets/agentpeers-hero.png" alt="AgentPeers: Grokbot talks to Dot; Claude Code talks to Codex on the same Mac; ChatGPT asks Dot for approved project facts." width="1200" />
 </p>
 
 # Your agents have different strengths. Let them talk.
