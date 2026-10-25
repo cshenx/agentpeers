@@ -90,6 +90,8 @@ class Endpoint:
                     fields = {**args, "csrf": self.app.oauth.csrf(args)}
                     hidden = "".join('<input type="hidden" name="%s" value="%s">' % (html.escape(k, quote=True), html.escape(v, quote=True)) for k, v in fields.items())
                     password = '' if self.app.context_ui.authenticated(self.headers) else '<label>Your AgentPeers password<input name="owner_key" type="password" required autocomplete="current-password"></label>'
+                    if password:
+                        password = '<p>Already signed in in this browser? <a href="' + html.escape(self.path, quote=True) + '">Use existing sign-in</a>.</p>' + password
                     body = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Connect AgentPeers Context</title><h1>Connect AgentPeers Context</h1><p>This app can discover allowed factual topics, ask Dot a question and retrieve its answer. Each originating chat needs your separate approval for a topic before anything is sent. It cannot read Dot’s general inbox, send general messages, subscribe, administer connections or authorize business actions.</p><form method="post" action="/oauth/authorize">' + hidden + password + '<button>Connect factual context</button></form></html>'
                     policy = "default-src 'none'; form-action 'self' https://%s; frame-ancestors 'none'; base-uri 'none'" % urlsplit(args["redirect_uri"]).hostname
                     return self.output(200, body, {"Content-Security-Policy": policy, "Referrer-Policy": "strict-origin"}, "text/html; charset=utf-8")

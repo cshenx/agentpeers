@@ -4,6 +4,7 @@
 
 - Add a separate ordinary ChatGPT → Dot factual-context connection, with discoverable owner-approved topics and sources, per-chat permission and explicit answer retrieval.
 - Add a normal owner setup page with a 15-minute sign-in, readable pairing review and individual revocation. Preserve the closed synthetic grant and existing Dot–Grokbot messaging.
+- Keep browser form submissions on the correct origin and offer same-site continuation for an existing owner sign-in, preserving the strict cookie and origin checks.
 - Accept sourced answers, unavailable and out-of-scope results; preserve fixed deadlines, duplicate suppression and exact receiver binding.
 - Keep named Codex context delivery separate; its live adapter is not implemented.
 

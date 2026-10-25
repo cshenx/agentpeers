@@ -280,6 +280,7 @@ class FactualTests(unittest.TestCase):
     def test_every_owner_form_preserves_browser_origin_without_relaxing_validation(self):
         page=self.http('GET','/context')
         self.assertEqual(page[2]['Referrer-Policy'],'strict-origin')
+        self.assertIn('href="/context">Use existing sign-in</a>',page[1])
         rejected=self.http('POST','/context/login',{'owner_key':self.config['owner_key']},origin='null')
         self.assertEqual(rejected[0],400)
         bad=self.http('POST','/context/login',{'owner_key':'wrong'},origin=self.config['public_url'])
@@ -290,6 +291,19 @@ class FactualTests(unittest.TestCase):
             response=self.owner_action(action,**fields)
             self.assertEqual(response[0],status)
             self.assertEqual(response[2]['Referrer-Policy'],'strict-origin')
+
+    def test_cross_site_owner_entry_can_continue_same_site_without_relaxing_cookie(self):
+        self.prepare(bind=False)
+        client=self.http('POST','/oauth/register',{'redirect_uris':['https://chatgpt.com/connector/oauth/fixture']})[1]
+        args=dict(client_id=client['client_id'],redirect_uri=client['redirect_uris'][0],resource=self.config['public_url']+RESOURCE_PATH,response_type='code',code_challenge_method='S256',code_challenge='x'*43,scope=SCOPE,state='return-state')
+        path='/oauth/authorize?'+urlencode(args)
+        first=self.http('GET',path)[1]
+        self.assertIn('Use existing sign-in</a>',first)
+        self.assertIn(html.escape(path,quote=True),first)
+        self.assertIn('name="owner_key"',first)
+        resumed=self.http('GET',path,cookie=self.owner)[1]
+        self.assertNotIn('name="owner_key"',resumed)
+        self.assertNotIn('Use existing sign-in</a>',resumed)
 
     def test_owner_html_escapes_scope_question_and_never_displays_credentials(self):
         self.prepare(bind=False)

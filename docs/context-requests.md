@@ -12,6 +12,8 @@ This uses the same AgentPeers service as the [Grokbot ↔ Dot connection](person
 
 Upgrade your existing AgentPeers service to a version containing this feature. Open `https://YOUR-SERVICE/context` and sign in with its existing AgentPeers password. The owner sign-in lasts 15 minutes so you can finish setup without repeatedly entering the password. It is not given to ChatGPT or Dot.
 
+If a page asks for your password after you have already signed in, choose **Use existing sign-in** first. This refreshes the page within AgentPeers and reuses the current sign-in. Enter the password only if that sign-in has expired or the browser has no saved session.
+
 Create an allowed topic:
 
 - **Topic name:** a name you recognize, such as “My project”.

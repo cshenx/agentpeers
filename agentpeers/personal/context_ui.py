@@ -76,6 +76,7 @@ class ContextUI:
         if message and self.authenticated(headers):
             content += '<p role="status">' + escape(message) + '</p>'
         if not self.authenticated(headers):
+            content += '<p>Already signed in in this browser? <a href="/context">Use existing sign-in</a>.</p>'
             content += '<form method="post" action="/context/login"><label>Your AgentPeers password<input name="owner_key" type="password" required autocomplete="current-password"></label><button>Open context settings</button></form><p>Use the existing password for this service. It stays here and is not given to ChatGPT or Dot. Owner sign-in lasts 15 minutes.</p>'
         else:
             with self.store.lock:
