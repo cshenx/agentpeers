@@ -1,9 +1,12 @@
 """Real owner/OAuth/MCP/receiver journeys with isolated fixtures, no live accounts."""
 from concurrent.futures import ThreadPoolExecutor
+import base64
+import hashlib
 import html
 import json
 import re
 import unittest
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import test_context_bridge as legacy
 from agentpeers.personal.config import digest
@@ -45,7 +48,7 @@ class FactualTests(unittest.TestCase):
     def prepare(self, bind=True):
         self.login()
         self.policy = dict(topic='project',scope='Project status and design only. Exclude credentials and unrelated private facts.',refs='dot:project-context\nhttps://github.com/example/project',subscription=self.sid)
-        self.assertEqual(self.owner_action('save_policy',**self.policy)[0],303)
+        self.assertEqual(self.owner_action('save_policy',**self.policy)[0],200)
         self.requester = self.connect(RESOURCE_PATH,SCOPE)
         if bind:
             pending = self.value('request_context',self.question)
@@ -55,7 +58,7 @@ class FactualTests(unittest.TestCase):
             page = self.http('GET','/context',cookie=self.owner)[1]
             self.assertIn(pending['pairing_code'],page)
             self.candidate = re.search('name="candidate" value="([^"]+)"',page)[1]
-            self.assertEqual(self.owner_action('allow_chat',candidate=self.candidate,days='30')[0],303)
+            self.assertEqual(self.owner_action('allow_chat',candidate=self.candidate,days='30')[0],200)
 
     def request(self, name, args=None, meta=None, token=None):
         return self.http('POST',RESOURCE_PATH,{'id':1,'method':'tools/call','params':{'name':name,'arguments':args or {},'_meta':self.meta if meta is None else meta}},token=token or self.requester)
@@ -89,6 +92,27 @@ class FactualTests(unittest.TestCase):
         payload=dict(request_id='facts-1',status='answered',answer='The API is ready for review.',sources=[dict(reference='dot:project-context',observed_at=999)])
         payload.update(changes)
         return self.http('POST','/mcp/dot',{'id':1,'method':'tools/call','params':{'name':'reply','arguments':dict(message_id=self.mid,reply_id='fact-answer',message=json.dumps(payload),expects='none')}},token=self.dot)[1]['result']
+
+    def cookie_oauth(self, path, scope, client=None):
+        if client is None:
+            client=self.http('POST','/oauth/register',{'redirect_uris':['https://chatgpt.com/connector/oauth/fixture']})[1]
+        verifier='x'*43
+        args=dict(client_id=client['client_id'],redirect_uri=client['redirect_uris'][0],resource=self.config['public_url']+path,response_type='code',code_challenge_method='S256',code_challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='),scope=scope)
+        response=self.http('GET','/oauth/authorize?'+urlencode(args),cookie=self.owner)
+        self.assertEqual(response[0],200)
+        if path==RESOURCE_PATH:
+            self.assertNotIn('name="owner_key"',response[1])
+            self.assertIn('Connect factual context',response[1])
+        fields={html.unescape(k):html.unescape(v) for k,v in re.findall('type="hidden" name="([^"]+)" value="([^"]*)"',response[1])}
+        if path!=RESOURCE_PATH:
+            fields['owner_key']=self.config['owner_key']
+        response=self.http('POST','/oauth/authorize',fields,origin=self.config['public_url'],cookie=self.owner)
+        self.assertEqual(response[0],303,response)
+        code=parse_qs(urlsplit(response[2]['Location']).query)['code'][0]
+        response=self.http('POST','/oauth/token',dict(grant_type='authorization_code',code=code,code_verifier=verifier,redirect_uri=args['redirect_uri'],client_id=client['client_id'],resource=args['resource']))
+        self.assertEqual(response[0],200,response)
+        self.assertEqual(response[1]['scope'],scope)
+        return client,response[1]
 
     def test_default_denial_and_normal_owner_setup_without_manual_correlation_fields(self):
         self.assertFalse(self.app.factual.active())
@@ -194,7 +218,7 @@ class FactualTests(unittest.TestCase):
     def test_policy_change_revokes_old_chat_and_cannot_reassign_old_requests(self):
         self.prepare();self.consume();self.answer()
         changed={**self.policy,'scope':'A narrower revised factual scope'}
-        self.assertEqual(self.owner_action('save_policy',**changed)[0],303)
+        self.assertEqual(self.owner_action('save_policy',**changed)[0],200)
         self.error('context_result',{'request_id':'facts-1'})
         pending=self.value('request_context',{**self.question,'request_id':'facts-new'})
         self.assertEqual(pending['state'],'approval_required')
@@ -209,7 +233,7 @@ class FactualTests(unittest.TestCase):
     def test_revoke_one_chat_stops_work_but_preserves_normal_messaging_and_legacy_trial(self):
         self.prepare();self.value('request_context',self.question)
         grant=self.store.db.execute('SELECT id FROM ap_facts_grants').fetchone()[0]
-        self.assertEqual(self.owner_action('revoke_chat',grant=grant)[0],303)
+        self.assertEqual(self.owner_action('revoke_chat',grant=grant)[0],200)
         self.error('context_result',{'request_id':'facts-1'})
         self.assertEqual(self.store.db.execute('SELECT stopped FROM conversations').fetchone()[0],1)
         self.assertFalse(self.app.context.active())
@@ -219,7 +243,7 @@ class FactualTests(unittest.TestCase):
 
     def test_disconnect_revokes_only_factual_tokens_and_keeps_records(self):
         self.prepare();self.consume();self.answer()
-        self.assertEqual(self.owner_action('disconnect')[0],303)
+        self.assertEqual(self.owner_action('disconnect')[0],200)
         self.assertEqual(self.request('context_result',{'request_id':'facts-1'})[0],401)
         self.assertEqual(self.store.db.execute('SELECT count(*) FROM ap_facts_requests').fetchone()[0],1)
         self.assertEqual(self.dot_tool('list_peers')['self'],'dot')
@@ -253,3 +277,41 @@ class FactualTests(unittest.TestCase):
         self.assertEqual(again['state'],'approval_expired')
         self.assertEqual(again['pairing_code'],pending['pairing_code'])
         self.assertEqual(self.store.db.execute('SELECT count(*) FROM messages').fetchone()[0],0)
+
+    def test_owner_signs_in_once_for_policy_oauth_and_chat_permission(self):
+        self.prepare(bind=False)
+        client,tokens=self.cookie_oauth(RESOURCE_PATH,SCOPE)
+        self.requester=tokens['access_token']
+        pending=self.value('request_context',self.question)
+        page=self.http('GET','/context',cookie=self.owner)[1]
+        self.assertIn(pending['pairing_code'],page)
+        candidate=re.search('name="candidate" value="([^"]+)"',page)[1]
+        response=self.owner_action('allow_chat',candidate=candidate,days='30')
+        self.assertEqual(response[0],200)
+        self.assertIn('Chat allowed. Return to the intended ChatGPT chat',response[1])
+        self.assertNotIn('type="password"',response[1])
+        self.assertEqual(self.value('request_context',self.question)['state'],'pending')
+
+    def test_native_oauth_revoke_is_resource_bound_and_revokes_context_chat_access(self):
+        self.prepare(bind=False)
+        client,tokens=self.cookie_oauth(RESOURCE_PATH,SCOPE)
+        self.requester=tokens['access_token']
+        _,normal=self.cookie_oauth('/mcp/dot','agentpeers:messages',client)
+        self.value('request_context',self.question)
+        page=self.http('GET','/context',cookie=self.owner)[1]
+        candidate=re.search('name="candidate" value="([^"]+)"',page)[1]
+        self.assertEqual(self.owner_action('allow_chat',candidate=candidate)[0],200)
+        self.value('request_context',self.question)
+        response=self.http('POST','/oauth/revoke',{'client_id':client['client_id'],'token':tokens['refresh_token']})
+        self.assertEqual(response[0],200)
+        self.assertEqual(self.request('context_result',{'request_id':'facts-1'})[0],401)
+        self.assertEqual(self.http('POST','/mcp/dot',{'id':1,'method':'tools/list'},token=normal['access_token'])[0],200)
+        self.assertEqual(self.store.db.execute('SELECT active FROM ap_facts_grants').fetchone()[0],0)
+        self.assertEqual(self.store.db.execute('SELECT stopped FROM conversations').fetchone()[0],1)
+
+    def test_bad_owner_password_remains_an_understandable_sign_in_form(self):
+        response=self.http('POST','/context/login',{'owner_key':'wrong'},origin=self.config['public_url'])
+        self.assertEqual(response[0],400)
+        self.assertIn('AgentPeers password did not match',response[1])
+        self.assertIn('Open context settings',response[1])
+        self.assertNotIn('Set-Cookie',response[2])

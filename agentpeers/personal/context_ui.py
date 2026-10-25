@@ -49,10 +49,12 @@ class ContextUI:
             self.store.db.execute("DELETE FROM ap_facts_owner_sessions WHERE hash=?", (digest(self.token(headers)),))
         return f"{COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict"
 
-    def page(self, headers, error=""):
+    def page(self, headers, error="", message=""):
         content = '<h1>AgentPeers context access</h1><p>Let an ordinary ChatGPT chat ask Dot factual questions on topics you approve. This does not grant access to Dot’s inbox or permission for business actions.</p>'
         if error:
             content += '<p role="alert">' + escape(error) + '</p>'
+        if message and self.authenticated(headers):
+            content += '<p role="status">' + escape(message) + '</p>'
         if not self.authenticated(headers):
             content += '<form method="post" action="/context/login"><label>Your AgentPeers password<input name="owner_key" type="password" required autocomplete="current-password"></label><button>Open context settings</button></form><p>Use the existing password for this service. It stays here and is not given to ChatGPT or Dot. Owner sign-in lasts 15 minutes.</p>'
         else:

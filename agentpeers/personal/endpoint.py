@@ -152,7 +152,12 @@ class Endpoint:
                     self.app.factual.admin(args)
                 except Rejected as exc:
                     return self.output(400, ui.page(self.headers, str(exc)), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
-                return self.output(303, headers={"Location": "/context"})
+                notices = {"save_policy": "Allowed topic saved. Connect AgentPeers Context in ChatGPT, then ask your factual question.",
+                           "allow_chat": "Chat allowed. Return to the intended ChatGPT chat and tell it to continue its existing request. No question was sent by this page.",
+                           "revoke_chat": "Chat access revoked. Its records are preserved; an agent already running cannot be interrupted here.",
+                           "disable_topic": "Topic disabled and its chat access revoked. Records are preserved.",
+                           "disconnect": "Context access disconnected. Normal Dot–Grokbot messaging is unchanged."}
+                return self.output(200, ui.page(self.headers, message=notices[args["action"]]), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
             if path == "/context/admin":
                 self.app.limit(self.source, path)
                 if self.headers.get("Origin") != self.app.store.config["public_url"]:

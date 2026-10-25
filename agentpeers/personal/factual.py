@@ -127,6 +127,13 @@ class FactualContext:
         s.db.execute("UPDATE conversations SET stopped=1 WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id=?)", (grant_id,))
         s.db.execute("UPDATE messages SET state='stopped',lease=NULL WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id=?) AND state IN ('queued','waiting')", (grant_id,))
 
+    def revoke_client(self, client):
+        """Called inside the OAuth revocation transaction, for this resource only."""
+        self.store.db.execute("UPDATE ap_facts_clients SET active=0 WHERE client=?", (client,))
+        self.store.db.execute("UPDATE ap_facts_candidates SET expires=0 WHERE client=?", (client,))
+        for row in self.store.db.execute("SELECT id FROM ap_facts_grants WHERE client=? AND active=1", (client,)).fetchall():
+            self._stop_grant(row["id"])
+
     def admin(self, args):
         """Only the owner-authenticated, same-origin UI may call this method."""
         s = self.store
@@ -259,6 +266,7 @@ class FactualContext:
                     raise Rejected("Mailbox capacity reached; existing records preserved")
                 now, mid = s.clock(), "fact-" + key
                 body = json.dumps({"schema": "agentpeers.factual.v1", **args, "expires": now + 300,
+                                   "grant_id": grant["id"], "grant_expires": grant["expires"], "policy_revision": policy["revision"],
                                    "owner_scope": policy["scope"], "allowed_sources": json.loads(policy["refs"]),
                                    "reply_format": {"request_id": args["request_id"], "status": "answered | unavailable | out_of_scope", "answer": "short factual answer or reason", "sources": [{"reference": "actual approved source reference", "observed_at": "Unix seconds when actually observed"}]}}, sort_keys=True)
                 s.db.execute("INSERT INTO conversations(id,a,b,scope,expires) VALUES(?,?,?,?,?)", (mid, ORIGIN, "dot", policy["scope"], now + 300))

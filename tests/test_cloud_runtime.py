@@ -136,6 +136,55 @@ class CloudRuntime(unittest.TestCase):
         self.request('POST',callback,{'action':'claim'});self.request('POST',callback,{'action':'acknowledge'})
         self.assertEqual(self.tool(token,'message_status',message_id='dot-answer')['state'],'read')
 
+    def test_factual_owner_setup_request_answer_restart_and_resource_only_disconnect(self):
+        dot=self.connect_dot();self.subscribe(dot)
+        _,_,receiving=self.request('POST','/status',urlencode({'owner_key':'o'*40}),headers={'Content-Type':'application/x-www-form-urlencoded','Origin':'http://127.0.0.1:'+str(self.port)})
+        # The fixture's normal event subscription supplies the actual saved ID.
+        subscription=self.rpc(dot,'events/subscribe',{'name':'message.created','arguments':{'recipient':'dot'},'delivery':{'mode':'webhook','url':'https://callbacks.example/event','secret':'whsec_'+base64.b64encode(b'k'*32).decode()}})['id']
+        status,headers,_=self.request('POST','/context/login',{'owner_key':'o'*40},headers={'Origin':'https://bridge.example'})
+        self.assertEqual(status,303)
+        owner={'Origin':'https://bridge.example','Cookie':headers['Set-Cookie'].split(';')[0]}
+        policy={'action':'save_policy','topic':'project','scope':'Fixture project status only; no business actions.','refs':'fixture:project','subscription':subscription}
+        self.assertEqual(self.request('POST','/context/actions',policy,headers=owner)[0],200)
+        requester=self.connect_dot('/mcp/context','agentpeers:facts')
+        metadata={'openai/subject':'cloud-factual-owner','openai/session':'cloud-factual-chat'}
+        question={'request_id':'cloud-facts','destination':'Dot','topic':'project','question':'Which project component is ready?'}
+        def context(name,args):
+            status,_,result=self.request('POST','/mcp/context',{'id':1,'method':'tools/call','params':{'name':name,'arguments':args,'_meta':metadata}},requester)
+            self.assertEqual(status,200,result)
+            self.assertNotIn('isError',result['result'],result)
+            return result['result']['structuredContent']
+        pending=context('request_context',question)
+        self.assertEqual(pending['state'],'approval_required')
+        self.assertFalse(pending['submitted'])
+        page=self.request('GET','/context',headers=owner)[2]
+        self.assertIn(pending['pairing_code'],page)
+        candidate=re.search('name="candidate" value="([^"]+)"',page)[1]
+        self.assertEqual(self.request('POST','/context/actions',{'action':'allow_chat','candidate':candidate,'days':'30'},headers=owner)[0],200)
+        self.assertEqual(context('request_context',question)['state'],'pending')
+        deadline=time.monotonic()+5
+        while True:
+            events=self.request('GET','/test/deliveries')[2]
+            event=next((r['payload'] for r in events if r['payload'].get('data',{}).get('sender')=='chatgpt-context'),None)
+            if event:break
+            self.assertLess(time.monotonic(),deadline)
+            time.sleep(.05)
+        mid=event['data']['message_id']
+        consumed=self.tool(dot,'claim_message',message_id=mid)
+        self.assertTrue(consumed['claimed'])
+        self.assertEqual(json.loads(consumed['body'])['question'],question['question'])
+        self.tool(dot,'acknowledge',message_id=mid)
+        payload={'request_id':'cloud-facts','status':'answered','answer':'The fixture API is ready.','sources':[{'reference':'fixture:project','observed_at':time.time()-1}]}
+        self.tool(dot,'reply',message_id=mid,reply_id='cloud-factual-answer',message=json.dumps(payload),expects='none')
+        self.restart_runtime()
+        result=context('context_result',{'request_id':'cloud-facts'})
+        self.assertEqual(result['answer'],'The fixture API is ready.')
+        self.assertEqual(result['delivery_state'],'read')
+        self.assertTrue(context('request_context',question)['duplicate'])
+        self.assertEqual(self.request('POST','/context/actions',{'action':'disconnect'},headers=owner)[0],200)
+        self.assertEqual(self.request('POST','/mcp/context',{'id':1,'method':'tools/list'},requester)[0],401)
+        self.assertEqual(self.tool(dot,'list_peers')['self'],'dot')
+
     def test_missing_subscription_waits_for_a_change_instead_of_polling(self):
         token=self.connect_dot()
         status,_,_=self.request('POST','/v1/call',{'tool':'send_message','arguments':{'to':'Dot','message':'Wait for a receiver','scope':'Fixture','message_id':'wait-sub'}},self.grok);self.assertEqual(status,200)

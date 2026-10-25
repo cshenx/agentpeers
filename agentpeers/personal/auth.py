@@ -164,5 +164,10 @@ class OAuth:
         with self.store.lock:
             row = self.store.db.execute("SELECT client,resource FROM oauth_tokens WHERE hash=?", (digest(args.get("token", "")),)).fetchone()
             if row and row[0] == args.get("client_id"):
-                self.store.db.execute("DELETE FROM oauth_tokens WHERE client=? AND resource=?", (row[0], row[1]))
+                def revoke():
+                    self.store.db.execute("DELETE FROM oauth_tokens WHERE client=? AND resource=?", (row[0], row[1]))
+                    service = self.context_service(row[1])
+                    if service is getattr(self.store, "factual", None) and service is not None:
+                        service.revoke_client(row[0])
+                self.store.transaction(revoke)
         return {}
