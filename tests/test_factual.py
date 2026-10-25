@@ -230,6 +230,24 @@ class FactualTests(unittest.TestCase):
         self.assertIn('receiver unavailable or changed',self.error('request_context',self.question))
         self.assertEqual(self.store.db.execute('SELECT count(*) FROM messages').fetchone()[0],0)
 
+    def test_queued_request_never_follows_a_replaced_receiver(self):
+        self.prepare();self.value('request_context',self.question)
+        self.store.db.execute('UPDATE subscriptions SET url=? WHERE id=?',('https://callbacks.example/replacement',self.sid))
+        self.assertTrue(self.app.dispatcher.once())
+        self.assertEqual(self.deliveries,[])
+        result=self.value('context_result',{'request_id':'facts-1'})
+        self.assertEqual(result['state'],'blocked')
+        self.assertFalse(self.app.dispatcher.once())
+
+    def test_queued_retry_keeps_the_original_receiver_binding(self):
+        self.prepare();self.value('request_context',self.question)
+        self.store.db.execute("UPDATE messages SET state='waiting'")
+        self.store.db.execute('UPDATE subscriptions SET active=0 WHERE id=?',(self.sid,))
+        self.store.db.execute("INSERT INTO subscriptions SELECT 'replacement',peer,?,secret,old_secret,rotate_until,expires,1 FROM subscriptions WHERE id=?",('https://callbacks.example/replacement',self.sid))
+        self.assertTrue(self.app.dispatcher.once())
+        self.assertEqual(self.deliveries,[])
+        self.assertEqual(self.value('context_result',{'request_id':'facts-1'})['state'],'blocked')
+
     def test_revoke_one_chat_stops_work_but_preserves_normal_messaging_and_legacy_trial(self):
         self.prepare();self.value('request_context',self.question)
         grant=self.store.db.execute('SELECT id FROM ap_facts_grants').fetchone()[0]

@@ -311,6 +311,14 @@ class FactualContext:
     def handles(self, message_id):
         return bool(self.store.db.execute("SELECT 1 FROM ap_facts_requests WHERE message_id=?", (message_id,)).fetchone())
 
+    @locked
+    def delivery_subscription(self, message_id):
+        """Recheck the pinned receiver at dispatch, including queued retries."""
+        row = self.store.db.execute("SELECT g.* FROM ap_facts_requests r JOIN ap_facts_grants g ON g.id=r.grant_id WHERE r.message_id=?", (message_id,)).fetchone()
+        if not row or not self.token_client_allowed(row["client"]) or not self._grant(tuple(row[k] for k in ("client", "subject", "session")), grant_id=row["id"]):
+            raise Rejected("Factual permission is no longer active")
+        return self._subscription(self.policy(row["topic"]))
+
     def answer(self, actor, args):
         s = self.store
         with s.lock:
