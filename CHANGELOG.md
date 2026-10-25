@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 — development candidate
+
+- Add a separate ordinary ChatGPT → Dot factual-context connection, with discoverable owner-approved topics and sources, per-chat permission and explicit answer retrieval.
+- Add a normal owner setup page with a 15-minute sign-in, readable pairing review and individual revocation. Preserve the closed synthetic grant and existing Dot–Grokbot messaging.
+- Accept sourced answers, unavailable and out-of-scope results; preserve fixed deadlines, duplicate suppression and exact receiver binding.
+- Keep named Codex context delivery separate; its live adapter is not implemented.
+
 ## 0.7.0 — unreleased candidate
 
 - Add the optional AgentPeers connection service for Grokbot ↔ Dot, alongside the existing local Claude Code ↔ Codex connection. First native adapters: Grokbot routines and Dot MCP Events.

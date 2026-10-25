@@ -315,3 +315,57 @@ class FactualTests(unittest.TestCase):
         self.assertIn('AgentPeers password did not match',response[1])
         self.assertIn('Open context settings',response[1])
         self.assertNotIn('Set-Cookie',response[2])
+
+    def test_friendly_topic_and_dot_context_checkbox_need_no_invented_reference(self):
+        self.login()
+        policy=dict(topic='My project',scope='Project facts only',refs='',dot_context='yes',subscription=self.sid)
+        self.policy=policy
+        self.assertEqual(self.owner_action('save_policy',**policy)[0],200)
+        self.requester=self.connect(RESOURCE_PATH,SCOPE)
+        destination=self.value('context_destinations')['destinations'][0]
+        self.assertEqual(destination['topic'],'My project')
+        self.assertEqual(destination['sources'],['dot:context/My%20project'])
+        self.question['topic']='My project'
+        self.value('request_context',self.question)
+        page=self.http('GET','/context',cookie=self.owner)[1]
+        candidate=re.search('name="candidate" value="([^"]+)"',page)[1]
+        self.assertEqual(self.owner_action('allow_chat',candidate=candidate)[0],200)
+        self.consume()
+        body=json.loads(self.dot_tool('read_message',message_id=self.mid)['body'])
+        self.assertEqual(body['context_reference'],'dot:context/My%20project')
+        self.assertNotIn('isError',self.answer(sources=[dict(reference=body['context_reference'],observed_at=999)]))
+
+    def test_owner_approval_retry_is_idempotent_and_revoked_pair_cannot_reactivate(self):
+        self.prepare()
+        before=dict(self.store.db.execute('SELECT * FROM ap_facts_grants').fetchone())
+        self.now+=10
+        self.assertEqual(self.owner_action('allow_chat',candidate=self.candidate,days='30')[0],200)
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ap_facts_grants').fetchone()[0],1)
+        self.assertEqual(dict(self.store.db.execute('SELECT * FROM ap_facts_grants').fetchone()),before)
+        self.assertEqual(self.owner_action('revoke_chat',grant=before['id'])[0],200)
+        self.assertEqual(self.owner_action('allow_chat',candidate=self.candidate)[0],400)
+
+    def test_missing_topic_cannot_accidentally_disconnect_all_context_access(self):
+        self.prepare()
+        self.assertEqual(self.owner_action('disable_topic')[0],400)
+        self.assertTrue(self.app.factual.active())
+        self.assertTrue(self.store.db.execute('SELECT active FROM ap_facts_grants').fetchone()[0])
+
+    def test_context_owner_sign_in_cannot_approve_normal_dot_permissions(self):
+        self.prepare()
+        _,client,*_=self.http('POST','/oauth/register',{'redirect_uris':['https://chatgpt.com/connector/oauth/fixture']})
+        args=dict(client_id=client['client_id'],redirect_uri=client['redirect_uris'][0],resource=self.config['public_url']+'/mcp/dot',response_type='code',code_challenge_method='S256',code_challenge=base64.urlsafe_b64encode(hashlib.sha256(('v'*43).encode()).digest()).decode().rstrip('='),scope='agentpeers:messages')
+        page=self.http('GET','/oauth/authorize?'+urlencode(args),cookie=self.owner)[1]
+        self.assertIn('name="owner_key"',page)
+        fields={html.unescape(k):html.unescape(v) for k,v in re.findall('type="hidden" name="([^"]+)" value="([^"]*)"',page)}
+        self.assertEqual(self.http('POST','/oauth/authorize',fields,origin=self.config['public_url'],cookie=self.owner)[0],400)
+
+    def test_owner_logout_and_password_rotation_invalidate_owner_sessions(self):
+        self.login()
+        response=self.http('POST','/context/logout',{},origin=self.config['public_url'],cookie=self.owner)
+        self.assertEqual(response[0],303)
+        self.assertIn('Max-Age=0',response[2]['Set-Cookie'])
+        self.assertFalse(self.app.context_ui.authenticated({'Cookie':self.owner}))
+        self.login()
+        self.config['owner_key']='replacement-fixture-password'*2
+        self.assertFalse(self.app.context_ui.authenticated({'Cookie':self.owner}))

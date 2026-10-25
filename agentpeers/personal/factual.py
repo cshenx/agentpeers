@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from functools import wraps
 import json
 import math
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from .. import __version__
 from . import AUTHORITY
@@ -20,6 +20,12 @@ from .protocol import STRING, tool
 ORIGIN = "chatgpt-context"
 RESOURCE_PATH = "/mcp/context"
 SCOPE = "agentpeers:facts"
+
+
+def context_reference(topic):
+    return "dot:context/" + quote(topic, safe="")
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ap_facts_policies(topic TEXT PRIMARY KEY, scope TEXT,
  refs TEXT, subscription TEXT, callback_digest TEXT, revision INTEGER, active INTEGER);
@@ -143,9 +149,12 @@ class FactualContext:
                     raise Rejected("Context addresses conflict with an existing peer, or Dot is not configured; existing routes preserved")
                 action = args.get("action")
                 if action == "save_policy":
-                    topic = identifier(args.get("topic", ""))
+                    topic = bounded(args.get("topic", ""), "topic name", 100).strip()
                     scope = bounded(args.get("scope"), "allowed factual scope", 2000)
                     refs = [v.strip() for v in args.get("refs", "").splitlines() if v.strip()]
+                    if args.get("dot_context") == "yes":
+                        refs.insert(0, context_reference(topic))
+                    refs = list(dict.fromkeys(refs))
                     if not 1 <= len(refs) <= 5 or any(not isinstance(v, str) or len(v.encode()) > 500 or "*" in v for v in refs):
                         raise Rejected("Give 1–5 exact source references or source roots, without wildcards")
                     sub = s.db.execute("SELECT id,url FROM subscriptions WHERE id=? AND peer='dot' AND active=1 AND expires>?",
@@ -164,12 +173,17 @@ class FactualContext:
                     s.db.execute("INSERT INTO ap_facts_policies VALUES(?,?,?,?,?,?,1) ON CONFLICT(topic) DO UPDATE SET scope=excluded.scope,refs=excluded.refs,subscription=excluded.subscription,callback_digest=excluded.callback_digest,revision=excluded.revision,active=1",
                                  (topic, *values, revision))
                 elif action == "allow_chat":
-                    candidate = s.db.execute("SELECT * FROM ap_facts_candidates WHERE id=? AND expires>?", (args.get("candidate"), s.clock())).fetchone()
+                    candidate = s.db.execute("SELECT * FROM ap_facts_candidates WHERE id=?", (args.get("candidate"),)).fetchone()
                     if not candidate:
                         raise Rejected("Pairing expired or unknown; use the intended chat to prepare a new request")
                     policy = self.policy(candidate["topic"])
                     if policy["revision"] != candidate["revision"] or not self.token_client_allowed(candidate["client"]):
                         raise Rejected("Policy or requester changed; prepare a new request for review")
+                    if candidate["expires"] <= s.clock():
+                        approved = s.db.execute("SELECT 1 FROM ap_facts_grants WHERE id=? AND active=1 AND expires>?", ("grant_" + candidate["id"], s.clock())).fetchone()
+                        if approved:
+                            return self.status()  # Lost-response/double-click retry never extends access.
+                        raise Rejected("Pairing expired or revoked; prepare a new request in the intended chat")
                     self._subscription(policy)
                     try:
                         days = int(args.get("days", "30"))
@@ -188,7 +202,7 @@ class FactualContext:
                 elif action == "revoke_chat":
                     self._stop_grant(identifier(args.get("grant", "")))
                 elif action in ("disable_topic", "disconnect"):
-                    topic = args.get("topic") if action == "disable_topic" else None
+                    topic = bounded(args.get("topic"), "topic name", 100).strip() if action == "disable_topic" else None
                     rows = s.db.execute("SELECT id FROM ap_facts_grants WHERE active=1" + (" AND topic=?" if topic else ""), (topic,) if topic else ()).fetchall()
                     for grant in rows:
                         self._stop_grant(grant["id"])
@@ -268,6 +282,7 @@ class FactualContext:
                 body = json.dumps({"schema": "agentpeers.factual.v1", **args, "expires": now + 300,
                                    "grant_id": grant["id"], "grant_expires": grant["expires"], "policy_revision": policy["revision"],
                                    "owner_scope": policy["scope"], "allowed_sources": json.loads(policy["refs"]),
+                                   "context_reference": context_reference(policy["topic"]) if context_reference(policy["topic"]) in json.loads(policy["refs"]) else None,
                                    "reply_format": {"request_id": args["request_id"], "status": "answered | unavailable | out_of_scope", "answer": "short factual answer or reason", "sources": [{"reference": "actual approved source reference", "observed_at": "Unix seconds when actually observed"}]}}, sort_keys=True)
                 s.db.execute("INSERT INTO conversations(id,a,b,scope,expires) VALUES(?,?,?,?,?)", (mid, ORIGIN, "dot", policy["scope"], now + 300))
                 s.db.execute("INSERT INTO messages(id,conversation_id,sender,recipient,body,expects,created,state) VALUES(?,?,?,?,?,'reply',?,'queued')", (mid, mid, ORIGIN, "dot", body, now))
