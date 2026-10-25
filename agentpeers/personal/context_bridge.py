@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS ap_context_requests(id TEXT PRIMARY KEY, request_id T
 
 
 class ContextBridge:
+    origin, scope = ORIGIN, SCOPE
+
     def __init__(self, store):
         self.store = store
         store.db.executescript(SCHEMA)

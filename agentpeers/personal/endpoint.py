@@ -5,6 +5,7 @@ import json
 import re
 from urllib.parse import parse_qs, urlsplit
 from .config import Rejected
+from .context_ui import POLICY as CONTEXT_POLICY
 
 
 def form(raw):
@@ -60,6 +61,9 @@ class Endpoint:
             parsed = urlsplit(self.path)
             path = parsed.path
             base = self.app.store.config["public_url"]
+            if path == "/context":
+                return self.output(200, self.app.context_ui.page(self.headers),
+                                   {"Content-Security-Policy": CONTEXT_POLICY, "Referrer-Policy": "no-referrer"}, "text/html; charset=utf-8")
             if path == "/context/admin":
                 body = '<!doctype html><meta charset="utf-8"><title>AgentPeers context trial</title><h1>One-chat context trial</h1><p>Owner control only. Check status first for active Dot receiver IDs and expiry. Verify the intended Dot listener, then use its exact subscription ID when enabling. Status also displays correlation candidates; bind the exact intended pair. Disabling preserves evidence and revokes only requester grants.</p><form method="post" action="/context/admin"><label>Your AgentPeers password <input name="owner_key" type="password" required autocomplete="off"></label><label>Action <input name="action" value="status"></label><label>Existing Dot subscription ID <input name="subscription_id"></label><label>Candidate subject <input name="subject"></label><label>Candidate session <input name="session"></label><button>Apply owner action</button></form>'
                 return self.output(200, body, {"Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'", "Referrer-Policy": "strict-origin"}, "text/html; charset=utf-8")
@@ -77,6 +81,14 @@ class Endpoint:
                 args = form(parsed.query.encode())
                 self.app.oauth.validate_authorize(args)
                 peer = self.app.oauth.resource_peer(args["resource"])
+                service = self.app.oauth.context_service(args["resource"])
+                if service is self.app.factual:
+                    fields = {**args, "csrf": self.app.oauth.csrf(args)}
+                    hidden = "".join('<input type="hidden" name="%s" value="%s">' % (html.escape(k, quote=True), html.escape(v, quote=True)) for k, v in fields.items())
+                    password = '' if self.app.context_ui.authenticated(self.headers) else '<label>Your AgentPeers password<input name="owner_key" type="password" required autocomplete="current-password"></label>'
+                    body = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Connect AgentPeers Context</title><h1>Connect AgentPeers Context</h1><p>This app can discover allowed factual topics, ask Dot a question and retrieve its answer. Each originating chat needs your separate approval for a topic before anything is sent. It cannot read Dot’s general inbox, send general messages, subscribe, administer connections or authorize business actions.</p><form method="post" action="/oauth/authorize">' + hidden + password + '<button>Connect factual context</button></form></html>'
+                    policy = "default-src 'none'; form-action 'self' https://%s; frame-ancestors 'none'; base-uri 'none'" % urlsplit(args["redirect_uri"]).hostname
+                    return self.output(200, body, {"Content-Security-Policy": policy, "Referrer-Policy": "strict-origin"}, "text/html; charset=utf-8")
                 if peer == "context-requester-1":
                     fields = {**args, "csrf": self.app.oauth.csrf(args)}
                     hidden = "".join('<input type="hidden" name="%s" value="%s">' % (html.escape(k, quote=True), html.escape(v, quote=True)) for k, v in fields.items())
@@ -113,8 +125,34 @@ class Endpoint:
                 if path == "/oauth/authorize":
                     if self.headers.get("Origin") != self.app.store.config["public_url"]:
                         raise Rejected("Owner authorization requires the same HTTPS origin")
-                    destination = self.app.oauth.authorize(args)
-                    return self.output(303, headers={"Location": destination})
+                    factual = self.app.oauth.context_service(args.get("resource")) is self.app.factual
+                    signed_in = factual and self.app.context_ui.authenticated(self.headers)
+                    destination = self.app.oauth.authorize(args, owner_authenticated=signed_in)
+                    headers = {"Location": destination}
+                    if factual and not signed_in:
+                        headers["Set-Cookie"] = self.app.context_ui.login(args.get("owner_key"))
+                    return self.output(303, headers=headers)
+            if path in ("/context/login", "/context/logout", "/context/actions"):
+                self.app.limit(self.source, path)
+                if self.headers.get("Origin") != self.app.store.config["public_url"]:
+                    raise Rejected("Use this deployment's own context settings page")
+                args = self.read_body()
+                ui = self.app.context_ui
+                if path == "/context/login":
+                    try:
+                        cookie = ui.login(args.get("owner_key"))
+                    except Rejected as exc:
+                        return self.output(400, ui.page(self.headers, str(exc)), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
+                    return self.output(303, headers={"Location": "/context", "Set-Cookie": cookie})
+                if not ui.authenticated(self.headers):
+                    return self.output(303, headers={"Location": "/context"})
+                if path == "/context/logout":
+                    return self.output(303, headers={"Location": "/context", "Set-Cookie": ui.logout(self.headers)})
+                try:
+                    self.app.factual.admin(args)
+                except Rejected as exc:
+                    return self.output(400, ui.page(self.headers, str(exc)), {"Content-Security-Policy": CONTEXT_POLICY}, "text/html; charset=utf-8")
+                return self.output(303, headers={"Location": "/context"})
             if path == "/context/admin":
                 self.app.limit(self.source, path)
                 if self.headers.get("Origin") != self.app.store.config["public_url"]:
@@ -142,7 +180,7 @@ class Endpoint:
             headers = {}
             if unauthorized and resource:
                 metadata = self.app.store.config["public_url"] + "/.well-known/oauth-protected-resource" + path
-                scope = "agentpeers:context" if path == "/mcp/context-requester" else "agentpeers:messages"
+                scope = "agentpeers:facts" if path == "/mcp/context" and self.app.factual.available() else "agentpeers:context" if path == "/mcp/context-requester" else "agentpeers:messages"
                 headers["WWW-Authenticate"] = 'Bearer resource_metadata="%s", scope="%s"' % (metadata, scope)
             return self.output(401 if unauthorized else 400, {"error": str(exc)}, headers)
         except Exception:

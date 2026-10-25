@@ -77,6 +77,9 @@ class Store:
         self.db.execute("INSERT INTO audit(message_id,at,stage) VALUES(?,?,?)", (mid, self.clock(), stage))
 
     def connected(self, actor, target):
+        factual = getattr(self, "factual", None)
+        if factual and factual.connected(actor, target):
+            return True
         context = getattr(self, "context", None)
         if context and "context-requester-1" in (actor, target) and context.connected(actor, target):
             return True

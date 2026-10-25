@@ -14,11 +14,19 @@ class OAuth:
     def __init__(self, store):
         self.store = store
 
+    def context_service(self, resource):
+        factual = getattr(self.store, "factual", None)
+        if factual and factual.available() and resource == factual.resource:
+            return factual
+        legacy = getattr(self.store, "context", None)
+        if legacy and resource == legacy.resource and "context-requester" not in self.store.config["peers"]:
+            return legacy
+        return None
+
     def resource_peer(self, resource):
-        from .context_bridge import ORIGIN
-        context = getattr(self.store, "context", None)
-        if context and resource == context.resource and "context-requester" not in self.store.config["peers"]:
-            return ORIGIN
+        service = self.context_service(resource)
+        if service:
+            return service.origin
         base = self.store.config["public_url"] + "/mcp/"
         if not isinstance(resource, str) or not resource.startswith(base):
             raise Rejected("Unknown OAuth resource")
@@ -28,10 +36,9 @@ class OAuth:
         return peer
 
     def scope(self, resource):
-        from .context_bridge import SCOPE
         self.resource_peer(resource)
-        context = getattr(self.store, "context", None)
-        return SCOPE if context and resource == context.resource and "context-requester" not in self.store.config["peers"] else "agentpeers:messages"
+        service = self.context_service(resource)
+        return service.scope if service else "agentpeers:messages"
 
     def metadata(self):
         base = self.store.config["public_url"]
@@ -39,7 +46,7 @@ class OAuth:
                 "registration_endpoint": base + "/oauth/register", "revocation_endpoint": base + "/oauth/revoke",
                 "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"],
                 "token_endpoint_auth_methods_supported": ["none"], "code_challenge_methods_supported": ["S256"],
-                "scopes_supported": ["agentpeers:messages"] + (["agentpeers:context"] if getattr(self.store, "context", None) and self.store.context.active() else []), "authorization_response_iss_parameter_supported": True}
+                "scopes_supported": ["agentpeers:messages"] + [s.scope for s in (getattr(self.store, "context", None), getattr(self.store, "factual", None)) if s and s.active()], "authorization_response_iss_parameter_supported": True}
 
     def register(self, args):
         redirects = args.get("redirect_uris", [])
@@ -68,8 +75,9 @@ class OAuth:
             raise Rejected("Authorization code with S256 PKCE is required")
         if args.get("scope", "agentpeers:messages") != self.scope(args["resource"]):
             raise Rejected("Scope must match the exact protected resource")
-        if self.scope(args["resource"]) == "agentpeers:context" and not self.store.context.active():
-            raise Rejected("Context trial is disabled")
+        service = self.context_service(args["resource"])
+        if service and not service.active():
+            raise Rejected("Context trial is disabled" if service is self.store.context else "Save an allowed factual topic at /context before connecting ChatGPT")
         if len(args.get("state", "")) > 2000:
             raise Rejected("State too large")
 
@@ -80,21 +88,22 @@ class OAuth:
         mac = hmac.new(self.store.config["owner_key"].encode(), signed, hashlib.sha256).hexdigest()
         return str(issued) + "." + mac
 
-    def authorize(self, args):
+    def authorize(self, args, *, owner_authenticated=False):
         self.validate_authorize(args)
         try:
             issued = int(args.get("csrf", "").split(".")[0])
             valid = 0 <= self.store.clock() - issued <= 600 and hmac.compare_digest(args["csrf"], self.csrf(args, issued))
         except (ValueError, KeyError):
             valid = False
-        if not valid or not hmac.compare_digest(args.get("owner_key", ""), self.store.config["owner_key"]):
+        if not valid or not (owner_authenticated or hmac.compare_digest(args.get("owner_key", ""), self.store.config["owner_key"])):
             raise Rejected("Owner approval failed")
         code = secrets.token_urlsafe(32)
         with self.store.lock:
             self.store.db.execute("DELETE FROM oauth_codes WHERE expires<=?", (self.store.clock(),))
             def issue():
-                if self.scope(args["resource"]) == "agentpeers:context":
-                    self.store.context.authorize_client(args["client_id"])
+                service = self.context_service(args["resource"])
+                if service:
+                    service.authorize_client(args["client_id"])
                 self.store.db.execute("INSERT INTO oauth_codes VALUES(?,?,?,?,?,?)", (digest(code), args["client_id"], args["redirect_uri"], args["code_challenge"], args["resource"], self.store.clock() + 120))
             self.store.transaction(issue)
         return args["redirect_uri"] + ("&" if "?" in args["redirect_uri"] else "?") + urlencode({"code": code, "state": args.get("state", ""), "iss": self.store.config["public_url"]})
@@ -119,6 +128,9 @@ class OAuth:
                 table, token_hash = "oauth_tokens", row["hash"]
             else:
                 raise Rejected("unsupported_grant_type")
+            service = self.context_service(resource)
+            if service and not service.token_client_allowed(client):
+                raise Rejected("invalid_grant")
             access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
             def rotate():
                 self.store.db.execute("DELETE FROM " + table + " WHERE hash=?", (token_hash,))
@@ -139,13 +151,18 @@ class OAuth:
             row = self.store.db.execute("SELECT * FROM oauth_tokens WHERE hash=? AND kind='access' AND expires>?", (digest(token), self.store.clock())).fetchone()
         if not row or row["resource"] != resource:
             raise Rejected("Unauthorized")
-        if self.scope(resource) == "agentpeers:context" and not self.store.context.token_client_allowed(row["client"]):
-            raise Rejected("Unauthorized")
+        service = self.context_service(resource)
+        if service:
+            if not service.token_client_allowed(row["client"]):
+                raise Rejected("Unauthorized")
+            if service is getattr(self.store, "factual", None):
+                from .factual import FactualCaller
+                return FactualCaller(row["client"])
         return peer_id
 
     def revoke(self, args):
         with self.store.lock:
-            row = self.store.db.execute("SELECT client FROM oauth_tokens WHERE hash=?", (digest(args.get("token", "")),)).fetchone()
+            row = self.store.db.execute("SELECT client,resource FROM oauth_tokens WHERE hash=?", (digest(args.get("token", "")),)).fetchone()
             if row and row[0] == args.get("client_id"):
-                self.store.db.execute("DELETE FROM oauth_tokens WHERE client=?", (row[0],))
+                self.store.db.execute("DELETE FROM oauth_tokens WHERE client=? AND resource=?", (row[0], row[1]))
         return {}
