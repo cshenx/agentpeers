@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS ap_facts_requests(id TEXT PRIMARY KEY, request_id TEX
  result TEXT, reply_id TEXT UNIQUE, completed REAL);
 CREATE TABLE IF NOT EXISTS ap_facts_owner_sessions(hash TEXT PRIMARY KEY, expires REAL);
 CREATE INDEX IF NOT EXISTS ap_facts_grant_chat ON ap_facts_grants(client,subject,session,topic);
+CREATE INDEX IF NOT EXISTS ap_facts_request_grant ON ap_facts_requests(grant_id);
 """
 TOOLS = [
     tool("context_destinations", "List the owner-configured factual topics available for Dot. This grants no access to answers or inboxes.", readonly=True),
@@ -123,22 +124,28 @@ class FactualContext:
     def status(self):
         s = self.store
         return {"policies": [dict(r) for r in s.db.execute("SELECT * FROM ap_facts_policies ORDER BY topic")],
-                "candidates": [dict(r) for r in s.db.execute("SELECT * FROM ap_facts_candidates WHERE expires>? ORDER BY expires", (s.clock(),))],
-                "grants": [dict(r) for r in s.db.execute("SELECT id,topic,expires,active FROM ap_facts_grants ORDER BY expires DESC LIMIT 100")],
+                "candidates": [dict(r) for r in s.db.execute("SELECT * FROM ap_facts_candidates WHERE expires>? ORDER BY expires LIMIT 64", (s.clock(),))],
+                "grants": [dict(r) for r in s.db.execute("SELECT id,topic,expires,active FROM ap_facts_grants ORDER BY active DESC,expires DESC LIMIT 1000")],
                 "receivers": self.receivers(), "request_count": s.db.execute("SELECT count(*) FROM ap_facts_requests").fetchone()[0]}
 
     def _stop_grant(self, grant_id):
+        self._stop_grants("id", grant_id)
+
+    def _stop_grants(self, field=None, value=None):
         s = self.store
-        s.db.execute("UPDATE ap_facts_grants SET active=0 WHERE id=?", (grant_id,))
-        s.db.execute("UPDATE conversations SET stopped=1 WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id=?)", (grant_id,))
-        s.db.execute("UPDATE messages SET state='stopped',lease=NULL WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id=?) AND state IN ('queued','waiting')", (grant_id,))
+        if field not in (None, "id", "client", "topic"):
+            raise Rejected("Invalid grant selector")
+        where, params = (field + "=?", (value,)) if field else ("1=1", ())
+        selected = "SELECT id FROM ap_facts_grants WHERE " + where
+        s.db.execute("UPDATE conversations SET stopped=1 WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id IN (" + selected + "))", params)
+        s.db.execute("UPDATE messages SET state='stopped',lease=NULL WHERE id IN (SELECT message_id FROM ap_facts_requests WHERE grant_id IN (" + selected + ")) AND state IN ('queued','waiting')", params)
+        s.db.execute("UPDATE ap_facts_grants SET active=0 WHERE " + where, params)
 
     def revoke_client(self, client):
         """Called inside the OAuth revocation transaction, for this resource only."""
         self.store.db.execute("UPDATE ap_facts_clients SET active=0 WHERE client=?", (client,))
         self.store.db.execute("UPDATE ap_facts_candidates SET expires=0 WHERE client=?", (client,))
-        for row in self.store.db.execute("SELECT id FROM ap_facts_grants WHERE client=? AND active=1", (client,)).fetchall():
-            self._stop_grant(row["id"])
+        self._stop_grants("client", client)
 
     def admin(self, args):
         """Only the owner-authenticated, same-origin UI may call this method."""
@@ -168,8 +175,7 @@ class FactualContext:
                     if old and old["active"] and tuple(old[k] for k in ("scope", "refs", "subscription", "callback_digest")) == values:
                         return self.status()
                     revision = old["revision"] + 1 if old else 1
-                    for grant in s.db.execute("SELECT id FROM ap_facts_grants WHERE topic=? AND active=1", (topic,)).fetchall():
-                        self._stop_grant(grant["id"])
+                    self._stop_grants("topic", topic)
                     s.db.execute("INSERT INTO ap_facts_policies VALUES(?,?,?,?,?,?,1) ON CONFLICT(topic) DO UPDATE SET scope=excluded.scope,refs=excluded.refs,subscription=excluded.subscription,callback_digest=excluded.callback_digest,revision=excluded.revision,active=1",
                                  (topic, *values, revision))
                 elif action == "allow_chat":
@@ -203,9 +209,7 @@ class FactualContext:
                     self._stop_grant(identifier(args.get("grant", "")))
                 elif action in ("disable_topic", "disconnect"):
                     topic = bounded(args.get("topic"), "topic name", 100).strip() if action == "disable_topic" else None
-                    rows = s.db.execute("SELECT id FROM ap_facts_grants WHERE active=1" + (" AND topic=?" if topic else ""), (topic,) if topic else ()).fetchall()
-                    for grant in rows:
-                        self._stop_grant(grant["id"])
+                    self._stop_grants("topic", topic) if topic else self._stop_grants()
                     if topic:
                         s.db.execute("UPDATE ap_facts_policies SET active=0 WHERE topic=?", (topic,))
                     else:
@@ -262,6 +266,8 @@ class FactualContext:
                     cid = fingerprint([*identity, args["topic"], policy["revision"], args["request_id"]])
                     candidate = s.db.execute("SELECT * FROM ap_facts_candidates WHERE id=?", (cid,)).fetchone()
                     if not candidate:
+                        if s.db.execute("SELECT count(*) FROM ap_facts_candidates WHERE expires>?", (s.clock(),)).fetchone()[0] >= 64:
+                            raise Rejected("Finish or let pending chat approvals expire before adding more")
                         if s.db.execute("SELECT count(*) FROM ap_facts_candidates").fetchone()[0] >= 5000:
                             raise Rejected("Pairing capacity reached; existing evidence preserved")
                         s.db.execute("INSERT INTO ap_facts_candidates VALUES(?,?,?,?,?,?,?,?)", (cid, *identity, args["topic"], policy["revision"], question, s.clock() + 600))
