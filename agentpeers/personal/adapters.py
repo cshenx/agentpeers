@@ -179,7 +179,16 @@ class Dispatcher:
             adapter = ADAPTERS[peer["platform"]]
             subscription = None
             if adapter.receiving == "event_subscription":
-                subscription = s.db.execute("SELECT * FROM subscriptions WHERE peer=? AND active=1 AND expires>? ORDER BY expires DESC LIMIT 1", (row["recipient"], now)).fetchone()
+                factual = getattr(s, "factual", None)
+                if factual and factual.handles(row["id"]):
+                    try:
+                        subscription = factual.delivery_subscription(row["id"])
+                    except Rejected:
+                        s.db.execute("UPDATE messages SET state='blocked',detail='Approved factual receiver or permission changed; owner review required' WHERE id=?", (row["id"],))
+                        s.event(row["id"], "factual_delivery_blocked")
+                        return True
+                else:
+                    subscription = s.db.execute("SELECT * FROM subscriptions WHERE peer=? AND active=1 AND expires>? ORDER BY expires DESC LIMIT 1", (row["recipient"], now)).fetchone()
                 if not subscription:
                     s.db.execute("UPDATE messages SET state='waiting',detail='Dot subscription missing or expired',next_attempt=? WHERE id=?", (now + 10, row["id"]))
                     return True

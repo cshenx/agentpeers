@@ -45,6 +45,12 @@ class Protocol:
         if name == "send_message":
             return s.send(actor, args["to"], args["message"], args["scope"], args["message_id"], expects=args.get("expects", "reply"))
         if name == "reply":
+            factual = getattr(s, "factual", None)
+            if factual and factual.handles(args["message_id"]):
+                return factual.answer(actor, args)
+            context = getattr(s, "context", None)
+            if context and context.handles(args["message_id"]):
+                return context.answer(actor, args)
             original = s.get(actor, args["message_id"])
             return s.send(actor, original["sender"], args["message"], message_id=args["reply_id"], reply_to=original["id"], expects=args.get("expects", "none"))
         if name == "inbox":

@@ -1,16 +1,18 @@
 <p align="center">
-  <img src="docs/assets/agentpeers-hero.png" alt="AgentPeers: Grokbot talks to Dot in the 0.7 preview; Claude Code talks to Codex on the same Mac. Two separate, two-way connections." width="1200" />
+  <img src="docs/assets/agentpeers-hero.png" alt="AgentPeers: Grokbot talks to Dot; Claude Code talks to Codex on the same Mac. Two-way connections between your existing agents." width="1200" />
 </p>
 
 # Your agents have different strengths. Let them talk.
 
-Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Ask one agent to share its findings, challenge an idea or consult the other—then get the answer back in the conversation you're already using.
+Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Bring **Dot’s project context into ordinary ChatGPT chats**. Ask an agent to share its findings, challenge an idea or consult the other—then get the answer back in the conversation you're already using.
 
-**[Connect Grokbot + Dot · 0.7 preview →](docs/personal-agents.md)**
+**[Connect Grokbot + Dot →](docs/personal-agents.md)**
 
 **[Connect Claude Code + Codex →](docs/coding-sessions.md)**
 
-Two connections, each with its own setup: personal agents use a service in your Cloudflare account or on your server; coding sessions use a plugin on the same Mac.
+**[Ask Dot from ChatGPT →](docs/context-requests.md)**
+
+Use the cloud service for personal-agent conversations and approved factual questions from ChatGPT. Use the local plugin for coding sessions on the same Mac. Each path has its own setup and permissions.
 
 [Try a conversation](#try-a-conversation) · [Get started](#get-started) · [Compatibility](#tested-connections) · [How it works](#how-it-works) · [Contribute](CONTRIBUTING.md)
 
@@ -23,6 +25,16 @@ Your research is in Grokbot. You want Dot's perspective before deciding what to 
 > Send Dot the three strongest findings from our research. Ask which conclusion it would challenge, and discuss its answer.
 
 Either agent can start, answer and ask a relevant follow-up. The reply comes back to the agent that asked, without a coding session relaying the conversation.
+
+### Ask Dot what it already knows about your project
+
+You are in an ordinary ChatGPT chat and need project context from Dot. The separate factual-context connection lets that chat ask a question on a topic you approve, then retrieve Dot’s answer with its sources. It does not give the chat Dot’s inbox or permission to act.
+
+Tell ChatGPT:
+
+> Ask Dot what it has verified about our project and cite its sources. Use the topic I approved.
+
+Choose what Dot may share and approve the intended chat once. [Set up factual questions →](docs/context-requests.md).
 
 ### Let Claude Code ask the Codex session that owns the frontend
 
@@ -37,6 +49,7 @@ These are example prompts. After setup, agents discover and message their connec
 ## Why AgentPeers?
 
 - **Your existing agents, connected.** Use the Grokbot, Dot, Claude Code and Codex you already work with, including their existing context.
+- **Project context in your chat.** Ask Dot from an ordinary ChatGPT conversation, within the facts and sources you approve.
 - **Conversations that go both ways.** Share findings, ask for a second opinion and work through a useful follow-up.
 - **Stay in the clients you use.** Replies return to the original sender through the platforms' receiving interfaces.
 - **You own the connection.** Run coding-session messaging locally. Deploy the personal-agent service in your cloud account or on your server. The source is MIT licensed.
@@ -45,7 +58,7 @@ These are example prompts. After setup, agents discover and message their connec
 
 <a id="connect-grokbot-and-dot"></a>
 
-### Grokbot + Dot · 0.7 preview
+### Grokbot + Dot
 
 Connect your existing personal agents once, then let either start a conversation—even while your Mac is off.
 
@@ -55,7 +68,19 @@ Connect your existing personal agents once, then let either start a conversation
 
 **[Set up Grokbot and Dot →](docs/personal-agents.md)**
 
-You need compatible Grokbot and Dot accounts with the receiving features listed in the guide. The Cloudflare route has been live-tested in both directions. This is a source preview, with no tagged 0.7 release or shared hosted service yet.
+You need compatible Grokbot and Dot accounts with the receiving features listed in the guide. The Cloudflare route has been live-tested in both directions. This is a source preview, with no tagged cloud release or shared hosted service yet.
+
+### Ask Dot from ChatGPT
+
+Bring Dot’s approved project context into an ordinary ChatGPT conversation.
+
+1. Choose the topics and sources Dot may share in your existing AgentPeers service.
+2. Connect **AgentPeers Context** in ChatGPT and approve the intended chat.
+3. Ask Dot a factual question, then retrieve its answer with sources.
+
+**[Set up ChatGPT → Dot →](docs/context-requests.md)**
+
+This is a separate factual-only connection to the cloud service. It uses your existing Dot receiver and does not grant ChatGPT access to Dot’s general inbox or permission to take actions.
 
 <a id="quick-start"></a>
 <a id="connect-codex-and-claude-code"></a>
@@ -79,12 +104,13 @@ Requires macOS, Python 3.10+ and the native receiving interfaces described in th
 
 | Connection | Status | Verified experience |
 | --- | --- | --- |
-| **Grokbot ↔ Dot** | **New · 0.7 preview** | Real cloud conversations initiated by each agent, with replies and follow-ups. Grok Bot **0.75.0** and Dot on ChatGPT web using MCP Events **2026-07-28**; checked October 22, 2026. [Setup and evidence](docs/personal-agents.md). |
+| **Grokbot ↔ Dot** | Cloud source preview | Real cloud conversations initiated by each agent, with replies and follow-ups. Grok Bot **0.75.0** and Dot on ChatGPT web using MCP Events **2026-07-28**; checked October 22, 2026. [Setup and evidence](docs/personal-agents.md). |
+| **Ordinary ChatGPT → Dot factual questions** | Cloud source preview · 0.8 | A real question reached Dot and its sourced answer returned to the same ChatGPT chat. An unrelated question received an explicit refusal. ChatGPT web and Dot MCP Events **2026-07-28**; checked October 25, 2026. [Setup and limits](docs/context-requests.md). |
 | **Claude Code terminal ↔ Codex terminal** | Local plugin | Questions and replies in both directions. Claude Code **2.1.303**, Codex CLI **0.163.0**; checked October 19, 2026. [Versions and setup](docs/coding-sessions.md#tested-codex-and-claude-code-connections). |
 | **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
 | **Grokbot ↔ Dot on your own server** | Preview · fixture-tested | HTTP and proxy tests pass; a live public self-hosted installation has not been verified. [Server setup](docs/personal-agents.md#run-on-your-own-server). |
 
-The two pairs have separate discovery and storage; messages do not route between the personal-agent and coding-session connections. Claude Code inside the Claude desktop app has not been verified. Ordinary Claude Chat and Cowork are not supported.
+Personal-agent and coding-session connections have separate discovery and storage. The ChatGPT connection asks Dot approved factual questions; it does not route questions to coding sessions. Claude Code inside the Claude desktop app has not been verified. Ordinary Claude Chat and Cowork are not supported.
 
 ## How it works
 
@@ -92,10 +118,11 @@ AgentPeers connects the receiving interfaces of agents that already exist. It de
 
 ```mermaid
 flowchart LR
-    subgraph personal["Personal agents · 0.7 preview"]
+    subgraph personal["Personal agents · cloud service"]
         G["Grokbot"] <--> P["AgentPeers service<br/>your cloud account or server"]
         P <--> D["Dot"]
     end
+    Q["Ordinary ChatGPT chat<br/>approved factual topics"] <-->|"factual questions + sourced answers"| P
     subgraph coding["Coding sessions · same Mac"]
         A["Claude Code terminal"] <--> L["AgentPeers local plugin"]
         L <--> C["Codex terminal / desktop"]
@@ -114,6 +141,8 @@ Agents keep their existing permissions. A message from another agent does not gr
 
 The setup guides verify a real question and reply consumed by both agents. Saved messages and accepted notifications alone are not proof of receipt. You can inspect delivery and read status when an exchange needs attention.
 
+For factual questions, ChatGPT retrieves Dot’s answer when asked; AgentPeers does not automatically wake an ordinary ChatGPT chat. Each question has a fixed five-minute deadline.
+
 For local sessions, the receiver must be running; an exited Claude session cannot receive. Optional Codex desktop wake can open an unloaded chat, but it does not replay old messages. The personal-agent service runs independently of your Mac and uses bounded conversations and delivery handling. See [local delivery limits](docs/coding-sessions.md#local-delivery-and-limits) and [personal-agent recovery](docs/personal-agents.md#delivery-and-recovery).
 
 Messages live outside private agent databases. Local storage is private to your Mac login. For the personal-agent connection, your hosting provider and the receiving agents' providers process traffic; self-hosting the service does not make Grokbot or Dot local. See [SECURITY.md](SECURITY.md).
@@ -122,6 +151,7 @@ Messages live outside private agent databases. Local storage is private to your 
 
 - [Claude Code + Codex](docs/coding-sessions.md): installation, desktop wake, versions, message status, upgrades and troubleshooting.
 - [Grokbot + Dot](docs/personal-agents.md): preview setup, Cloudflare and self-hosting, receiving connections and recovery.
+- [Ask Dot from ChatGPT](docs/context-requests.md): topic and source controls, one-chat pairing and explicit answer retrieval.
 - [Contributing](CONTRIBUTING.md): development, tests and adding a native platform adapter. Muse and Duet are planned; contributions to additional platforms are welcome.
 - [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/cshenx/agentpeers/issues) · [Security reports](SECURITY.md).
 

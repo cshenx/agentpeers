@@ -78,10 +78,10 @@ class CloudRuntime(unittest.TestCase):
         self.assertEqual(status,200,page)
         self.grok=re.search('<pre>([^<]+)</pre>',page)[1]
 
-    def connect_dot(self):
+    def connect_dot(self, resource_path='/mcp/dot', scope='agentpeers:messages'):
         status,_,client=self.request('POST','/oauth/register',{'redirect_uris':['https://chatgpt.com/connector/oauth/test']});self.assertEqual(status,201)
         verifier='v'*43
-        args={'client_id':client['client_id'],'redirect_uri':client['redirect_uris'][0],'resource':'https://bridge.example/mcp/dot','response_type':'code','code_challenge_method':'S256','code_challenge':base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='),'state':'return-state'}
+        args={'client_id':client['client_id'],'redirect_uri':client['redirect_uris'][0],'resource':'https://bridge.example'+resource_path,'scope':scope,'response_type':'code','code_challenge_method':'S256','code_challenge':base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='),'state':'return-state'}
         status,approval_headers,page=self.request('GET','/oauth/authorize?'+urlencode(args));self.assertEqual(status,200)
         self.assertEqual(approval_headers['Content-Security-Policy'], "default-src 'none'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'")
         self.assertIn('<form method="post" action="/oauth/authorize">', page)
@@ -135,6 +135,61 @@ class CloudRuntime(unittest.TestCase):
         callback=urlsplit(self.delivery('dot-answer')['payload']['callback_url']).path
         self.request('POST',callback,{'action':'claim'});self.request('POST',callback,{'action':'acknowledge'})
         self.assertEqual(self.tool(token,'message_status',message_id='dot-answer')['state'],'read')
+
+    def test_factual_owner_setup_request_answer_restart_and_resource_only_disconnect(self):
+        dot=self.connect_dot();self.subscribe(dot)
+        self.assertEqual(self.request('GET','/context')[1]['Referrer-Policy'],'strict-origin')
+        wrong=self.request('POST','/context/login',{'owner_key':'wrong'},headers={'Origin':'https://bridge.example'})
+        self.assertEqual(wrong[0],400)
+        self.assertEqual(wrong[1]['Referrer-Policy'],'strict-origin')
+        _,_,receiving=self.request('POST','/status',urlencode({'owner_key':'o'*40}),headers={'Content-Type':'application/x-www-form-urlencoded','Origin':'http://127.0.0.1:'+str(self.port)})
+        # The fixture's normal event subscription supplies the actual saved ID.
+        subscription=self.rpc(dot,'events/subscribe',{'name':'message.created','arguments':{'recipient':'dot'},'delivery':{'mode':'webhook','url':'https://callbacks.example/event','secret':'whsec_'+base64.b64encode(b'k'*32).decode()}})['id']
+        status,headers,_=self.request('POST','/context/login',{'owner_key':'o'*40},headers={'Origin':'https://bridge.example'})
+        self.assertEqual(status,303)
+        owner={'Origin':'https://bridge.example','Cookie':headers['Set-Cookie'].split(';')[0]}
+        policy={'action':'save_policy','topic':'project','scope':'Fixture project status only; no business actions.','refs':'fixture:project','subscription':subscription}
+        saved=self.request('POST','/context/actions',policy,headers=owner)
+        self.assertEqual(saved[0],200)
+        self.assertEqual(saved[1]['Referrer-Policy'],'strict-origin')
+        requester=self.connect_dot('/mcp/context','agentpeers:facts')
+        metadata={'openai/subject':'cloud-factual-owner','openai/session':'cloud-factual-chat'}
+        question={'request_id':'cloud-facts','destination':'Dot','topic':'project','question':'Which project component is ready?'}
+        def context(name,args):
+            status,_,result=self.request('POST','/mcp/context',{'id':1,'method':'tools/call','params':{'name':name,'arguments':args,'_meta':metadata}},requester)
+            self.assertEqual(status,200,result)
+            self.assertNotIn('isError',result['result'],result)
+            return result['result']['structuredContent']
+        pending=context('request_context',question)
+        self.assertEqual(pending['state'],'approval_required')
+        self.assertFalse(pending['submitted'])
+        page=self.request('GET','/context',headers=owner)[2]
+        self.assertIn(pending['pairing_code'],page)
+        candidate=re.search('name="candidate" value="([^"]+)"',page)[1]
+        self.assertEqual(self.request('POST','/context/actions',{'action':'allow_chat','candidate':candidate,'days':'30'},headers=owner)[0],200)
+        self.assertEqual(context('request_context',question)['state'],'pending')
+        deadline=time.monotonic()+5
+        while True:
+            events=self.request('GET','/test/deliveries')[2]
+            event=next((r['payload'] for r in events if r['payload'].get('data',{}).get('sender')=='chatgpt-context'),None)
+            if event:break
+            self.assertLess(time.monotonic(),deadline)
+            time.sleep(.05)
+        mid=event['data']['message_id']
+        consumed=self.tool(dot,'claim_message',message_id=mid)
+        self.assertTrue(consumed['claimed'])
+        self.assertEqual(json.loads(consumed['body'])['question'],question['question'])
+        self.tool(dot,'acknowledge',message_id=mid)
+        payload={'request_id':'cloud-facts','status':'answered','answer':'The fixture API is ready.','sources':[{'reference':'fixture:project','observed_at':time.time()-1}]}
+        self.tool(dot,'reply',message_id=mid,reply_id='cloud-factual-answer',message=json.dumps(payload),expects='none')
+        self.restart_runtime()
+        result=context('context_result',{'request_id':'cloud-facts'})
+        self.assertEqual(result['answer'],'The fixture API is ready.')
+        self.assertEqual(result['delivery_state'],'read')
+        self.assertTrue(context('request_context',question)['duplicate'])
+        self.assertEqual(self.request('POST','/context/actions',{'action':'disconnect'},headers=owner)[0],200)
+        self.assertEqual(self.request('POST','/mcp/context',{'id':1,'method':'tools/list'},requester)[0],401)
+        self.assertEqual(self.tool(dot,'list_peers')['self'],'dot')
 
     def test_missing_subscription_waits_for_a_change_instead_of_polling(self):
         token=self.connect_dot()
@@ -258,3 +313,47 @@ class CloudRuntime(unittest.TestCase):
         self.assertEqual(re.search('<pre>([^<]+)</pre>',page)[1],self.grok)
         status,_,saved=self.request('POST','/v1/call',{'tool':'message_status','arguments':{'message_id':'preserved'}},self.grok)
         self.assertEqual(status,200);self.assertEqual(saved['body'],'Keep this message')
+
+    def test_context_trial_oauth_dot_return_and_scoped_rollback(self):
+        from agentpeers.personal.context_bridge import QUESTION, SOURCE
+        dot = self.connect_dot()
+        sid = self.subscribe(dot)['id']
+        def admin(action, **extra):
+            code, _, value = self.request('POST', '/context/admin', {'owner_key':'o'*40, 'action':action, **extra}, headers={'Origin':'https://bridge.example'})
+            self.assertEqual(code, 200, value)
+            return value
+        self.assertTrue(admin('enable', subscription_id=sid)['enabled'])
+        requester = self.connect_dot('/mcp/context-requester', 'agentpeers:context')
+        metadata = {'openai/subject':'fixture-subject', 'openai/session':'fixture-session'}
+        arguments = {'request_id':'cloud-card-1', 'destination':'Dot', 'topic':'integration-check', 'question':QUESTION}
+        def context(name, args, meta=None):
+            code, _, value = self.request('POST', '/mcp/context-requester', {'id':1, 'method':'tools/call', 'params':{'name':name, 'arguments':args, '_meta':metadata if meta is None else meta}}, requester)
+            self.assertEqual(code, 200, value)
+            return value['result']
+        self.assertEqual(context('request_context', arguments)['structuredContent']['state'], 'binding_required')
+        admin('bind', subject=metadata['openai/subject'], session=metadata['openai/session'])
+        pending = context('request_context', arguments)['structuredContent']
+        self.assertEqual(pending['state'], 'pending')
+        self.assertTrue(context('request_context', arguments)['structuredContent']['duplicate'])
+        self.assertTrue(context('context_result', {'request_id':'cloud-card-1'}, {**metadata,'openai/session':'other'})['isError'])
+        deadline = time.monotonic() + 5
+        mid = None
+        while time.monotonic() < deadline:
+            events = self.request('GET', '/test/deliveries')[2]
+            matches = [event['payload'] for event in events if event['payload'].get('data', {}).get('sender') == 'context-requester-1']
+            if matches:
+                mid = matches[0]['data']['message_id']
+                break
+            time.sleep(.05)
+        self.assertIsNotNone(mid, 'Context event did not reach the native fixture')
+        claimed = self.tool(dot, 'claim_message', message_id=mid)
+        self.assertTrue(claimed['claimed'])
+        self.tool(dot, 'read_message', message_id=mid)
+        self.tool(dot, 'acknowledge', message_id=mid)
+        body = {'request_id':'cloud-card-1','answer':'amber','sources':[{'reference':SOURCE,'observed_at':time.time()-1}]}
+        answer = self.tool(dot, 'reply', message_id=mid, reply_id='cloud-card-answer', message=json.dumps(body))
+        self.assertEqual(answer['state'], 'completed')
+        self.assertEqual(context('context_result', {'request_id':'cloud-card-1'})['structuredContent']['answer'], 'amber')
+        self.assertFalse(admin('disable')['enabled'])
+        self.assertEqual(self.request('POST','/mcp/context-requester',{'id':1,'method':'tools/list'},requester)[0],401)
+        self.assertEqual(self.tool(dot,'list_peers')['self'], 'dot')

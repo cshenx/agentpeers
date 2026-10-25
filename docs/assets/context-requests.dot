@@ -1,0 +1,17 @@
+// Public architecture only; no account, deployment or conversation identifiers.
+digraph G {
+ graph [rankdir=TB,bgcolor="white",pad="0.3",nodesep="0.45",ranksep="0.6",label="AgentPeers: factual context",labelloc=t,fontsize=22,fontname="Arial"];
+ node [shape=box,style="rounded,filled",fillcolor="#f6f8fb",color="#67768b",fontname="Arial",fontsize=14,margin="0.18,0.12"];
+ edge [fontname="Arial",fontsize=11,color="#2c7057",penwidth=1.5];
+ owner [label="Owner\nchoose facts + sources\nreview each chat / revoke"];
+ chat [label="Ordinary ChatGPT chat\nseparate OAuth requester\nno inbox or action tools"];
+ service [label="Existing AgentPeers service\nowner-approved chat + topic\nfixed deadline / stable request ID"];
+ store [shape=cylinder,label="Private request / result records\nseparate from normal peer permissions"];
+ dot [label="Existing Dot receiver\ncheck its human scope\nanswer with sources, or refuse"];
+ owner -> service [label="configure permission"];
+ chat -> service [label="discover topics / ask / retrieve result",dir=both];
+ service -> store [label="atomic save / inspect",dir=both];
+ service -> dot [label="existing signed event / scoped result",dir=both];
+ limits [shape=note,fillcolor="#fff2d5",color="#a77512",label="OAuth authenticates; metadata correlates\nSource reports are not independent fact checks\nNo automatic ordinary-chat wake or replay\nExisting Dot–Grokbot messaging stays separate\nNamed Codex receiver not implemented"];
+ service -> limits [style=dotted,arrowhead=none];
+}

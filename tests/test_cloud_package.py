@@ -23,8 +23,9 @@ class CloudPackage(unittest.TestCase):
         prepare.prepare_runtime(self.root)
         paths = {p.relative_to(self.root / '.cloud-build/runtime').as_posix()
                  for p in (self.root / '.cloud-build/runtime').rglob('*') if p.is_file()}
-        self.assertEqual(len(paths), 12)
-        self.assertTrue({'worker.py','backend.py','agentpeers/personal/store.py'} <= paths)
+        self.assertEqual(len(paths), 16)
+        self.assertTrue({'worker.py','backend.py','agentpeers/personal/store.py',
+                         'agentpeers/personal/context.py','agentpeers/personal/context_bridge.py'} <= paths)
         self.assertFalse(any('fixture' in p or p.endswith(('server.py','config.json','cli.py')) for p in paths))
 
     def test_unexpected_generated_file_stops_upload(self):
