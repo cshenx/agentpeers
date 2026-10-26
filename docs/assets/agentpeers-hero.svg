@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="755" viewBox="0 0 1200 755" role="img" aria-labelledby="title desc">
 <title id="title">AgentPeers — let your agents talk</title>
-<desc id="desc">Grokbot exchanges messages with Dot. Claude Code exchanges messages with Codex on the same Mac. Ordinary ChatGPT chats ask Dot factual questions on approved topics.</desc>
+<desc id="desc">Grokbot exchanges messages with Dot. Claude Code exchanges messages with Codex on the same Mac. ChatGPT brings Dot’s knowledge into the conversation, with answers and sources.</desc>
 <rect width="1200" height="755" rx="28" fill="#11141b" />
 <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif">
 <text x="60" y="75" fill="#f8fafc" font-size="64" font-weight="750" letter-spacing="-3">AgentPeers</text>
@@ -23,7 +23,7 @@
 </g>
 <rect x="40" y="569" width="1120" height="158" rx="22" fill="#1c202a" stroke="#3a4050" />
 <text x="72" y="611" fill="#b9c5dd" font-size="25" font-weight="600">PROJECT CONTEXT</text>
-<text x="1125" y="611" text-anchor="end" fill="#b9c5dd" font-size="24" font-weight="600">APPROVED FACTS</text>
+<text x="1125" y="611" text-anchor="end" fill="#b9c5dd" font-size="24" font-weight="600">ASK DOT</text>
 <path d="M96 641H153Q163 641 163 651V679Q163 689 153 689H124L108 701V689H96Q86 689 86 679V651Q86 641 96 641Z" fill="none" stroke="#9cdecf" stroke-width="4" stroke-linejoin="round" />
 <text x="204" y="689" fill="#f8fafc" font-size="52" font-weight="650" letter-spacing="-1.5">ChatGPT</text>
 <g fill="none" stroke="#9cdecf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M558 655H654L641 642M654 683H558L571 696" /></g>
