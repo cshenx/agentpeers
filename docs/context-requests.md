@@ -1,8 +1,8 @@
-# Ask Dot for factual context from ChatGPT
+# Ask Dot from ChatGPT
 
 Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic it knows. Dot returns a short answer with its sources and observation times. You choose what it may share; the requesting chat gets no access to Dot's inbox or general messaging tools.
 
-![Factual-context architecture](assets/context-requests.svg)
+![ChatGPT and Dot connection](assets/context-requests.svg)
 
 **Cloud source preview · 0.8.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
 
