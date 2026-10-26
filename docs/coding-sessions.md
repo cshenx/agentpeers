@@ -41,7 +41,13 @@ codex app-server daemon start
 codex
 ```
 
-`start` reuses an existing server. For **Codex desktop**, open the app and use a chat with the plugin loaded. Setup checks whether that chat can receive. To also reach unloaded desktop chats, tell either agent:
+`start` reuses an existing server. For **Codex desktop**, use a locally hosted chat with the plugin loaded. Setup checks whether that exact chat can receive.
+
+**Desktop visibility does not establish local hosting.** A chat can appear in the desktop app and use a local working directory while its conversation is hosted elsewhere. Where your client exposes native hosting metadata, `hostId: local` distinguishes a local chat from `durable` or remote hosting; the title and working directory do not establish that distinction. AgentPeers’ local receiving and desktop-wake paths currently support compatible local receivers, not direct delivery to durable or remote-hosted chats. If hosting metadata is unavailable, rely on the setup exchange rather than assuming a visible chat is reachable.
+
+For Codex-to-Codex coordination, use the client's native messaging first. For Claude Code, choose an authorized local Codex recipient with a verified receiving route. Do not take over another conversation or resume it in a terminal as a delivery workaround.
+
+To also reach unloaded **local** desktop chats, tell either agent:
 
 > Enable AgentPeers desktop wake. I understand it may select the destination chat in the app.
 
@@ -71,7 +77,7 @@ Then ask either agent to find and message the other. You can also ask it to insp
 | --- | --- | --- |
 | Claude Code **2.1.303**, in a terminal | Codex CLI **0.163.0**, in a terminal | Questions and replies in both directions; checked October 19, 2026. |
 | Claude Code **2.1.296**, in a terminal | Codex desktop app **26.1007.30912** | Questions and replies in both directions. Receiving requires a loaded Codex chat. |
-| Claude Code **2.1.304**, in a terminal | Codex desktop app **26.1013.40934** | An unloaded chat was opened by desktop wake, consumed the peer message and returned its exact nonce; checked October 20, 2026. |
+| Claude Code **2.1.304**, in a terminal | Codex desktop app **26.1013.40934** | An unloaded local chat was opened by desktop wake, consumed the peer message and returned its exact nonce; checked October 20, 2026. |
 | Claude Code in the Claude desktop app | Codex terminal or desktop app | Not yet verified with AgentPeers. |
 
 Run the setup check after installation or client updates to confirm that messages and replies reach both sessions. The Claude desktop entry refers to Claude Code in the app's Code tab; ordinary Claude Chat and Cowork conversations are not supported connections.
@@ -118,6 +124,30 @@ MCP accepts strings directly. CLI file/stdin input preserves quotes, newlines an
 
 Fresh installs store messages in `~/.local/state/agentpeers/messages.sqlite3`. The store is private to your OS user, unencrypted and retained until you deliberately remove it. Set `AGENTPEERS_HOME` to the same private directory in both clients to choose another location.
 
+For custom or isolated profiles, verify the effective message-store path and native receiver inventory reported by setup before sending. A variable set in the terminal is not proof that the client passed it to the plugin’s MCP process. If setup reports another profile’s store or sessions, stop before messaging; do not treat the surrounding terminal profile as sufficient isolation.
+
+### Custom profiles
+
+If you use separate client profiles or a custom mailbox, create an optional private `connection.json` in **each installed plugin’s native data directory**. This avoids relying on environment variables that a client may filter out when starting MCP servers. Ordinary installations need no connection file and keep their existing defaults and messages.
+
+Use the installed plugin’s `bin/agentpeers` executable:
+
+```sh
+"/absolute/path/to/installed/plugin/bin/agentpeers" connection configure \
+  --data-dir /absolute/native/plugin-data-directory \
+  --codex-home /absolute/codex-profile \
+  --claude-home /absolute/claude-profile \
+  --mailbox-home /absolute/private/shared-mailbox
+```
+
+Use the same three connection paths in both plugin copies. `--data-dir` differs between clients: Codex reports its exact `PLUGIN_DATA` path in `codex mcp list --json`; Claude supplies `CLAUDE_PLUGIN_DATA` to its plugin MCP server. Use that client-provided directory, not the versioned plugin cache. Claude’s [plugin reference](https://code.claude.com/docs/en/plugins-reference#environment-variables) documents its persistent data directory and plugin-ID naming. When the native plugin-data variable is available, `--data-dir` can be omitted. It is not normally exported to an agent’s shell tool.
+
+The command creates a private file atomically and never overwrites a different existing connection. It neither starts agents nor changes client settings, credentials or permissions. The file accepts only a schema version and the three absolute local paths. It must be owned by your Mac login account, private and nonsymlink; an existing mailbox must be mode `0700`. Invalid files or explicit environment settings that disagree with the file stop before discovery. Preserve and review an existing connection before changing it.
+
+Keeping Claude’s ordinary `~/.claude` home while changing only the mailbox preserves its normal `~/.claude.json` registration lookup. A nondefault Claude home uses that profile’s `.claude.json`. Explicitly setting `CLAUDE_CONFIG_DIR` or `ANTHROPIC_CONFIG_DIR` keeps native explicit-profile behavior, including when the selected path happens to be `~/.claude`.
+
+Run `agentpeers connection show` in the plugin’s native environment to inspect its selected paths without connecting or discovering sessions. Reload the affected MCP server, then check the `connection` paths in the actual setup result before sending. A shell command or a manually supplied plugin-data variable alone does not prove what the client’s running MCP process uses. Profile configuration does not make an exited receiver available or start a native shared server for you.
+
 Existing Peerbridge users keep their messages: an existing `~/.local/state/peerbridge` directory is reused without moving or copying data. `PEERBRIDGE_HOME`, `PEERBRIDGE_SESSION` and `PEERBRIDGE_CODEX` settings remain accepted; corresponding `AGENTPEERS_` settings take precedence. Keep the same store in both clients during an upgrade.
 
 Use each client's plugin manager to update. A Git-backed installation updates from Git; a local-directory installation uses the maintained source directory. After upgrading, reload or open a fresh normal session and verify the running version and a real exchange. Uninstall with:
@@ -136,15 +166,17 @@ Uninstall leaves messages intact. Earlier installations from this repository's s
 
 - **Tools or arguments remain stale after reload:** use a fresh normal session or exit/resume after finishing active work. Repeated reconnects may leave conversation-cached schemas unchanged; do not add a duplicate manual MCP server.
 - **The shared server runs but the destination is absent:** the terminal may be embedded rather than attached. Setup checks the actual caller when its identity is available. On Codex 0.162.1, one tested inline reasoning override selected an embedded server; removing that optional override restored attachment. Check your current version instead of assuming all overrides behave alike.
+- **A Codex test waits for approval without showing a decision:** check the native terminal before waiting or repeating the tool call. In an isolated Codex 0.164.0 acceptance test, resuming the same owned conversation with `codex resume --remote unix:///absolute/path/to/its/app-server-control.sock --no-alt-screen SESSION_ID` displayed the ordinary one-time tool decision and returned the setup result. Use only the verified socket belonging to that profile and preserve its complete launch environment. This is an observed recovery for that test; the original stall's cause remains unknown. Do not use it to take over an unrelated or desktop-owned chat, change approval policy, or start another server. Cancel a stuck call before any deliberate retry; never repeat an uncertain message submission.
 - **A send failed but the answer was saved:** inspect the original request's correlated replies and collect the existing reply. `delivery` can later become `read` while `transport_status` retains the original failure. Do not resend an already saved answer.
-- **The desktop connection is reachable but delivery fails:** inspect the specific chat's receiving owner. Connection availability does not establish chat availability or app closure. If desktop wake is enabled, check `detail.desktop_wake` on a submitted message; only a real reply and reads prove the exchange worked.
+- **The desktop connection is reachable but delivery fails:** inspect the specific chat's hosting and receiving owner. A durable or remote-hosted chat can be active while absent from the local receiver inventory. Desktop wake cannot currently bridge that hosting boundary. A local `thread not loaded` rejection during wake preflight occurs before the app-opening attempt; it does not establish that the chat ended or that opening was attempted. Connection availability does not establish chat availability or app closure. If desktop wake is enabled, check `detail.desktop_wake` on a submitted message; only a real reply and reads prove the exchange worked.
+- **A durable chat's reply is in its mailbox:** only the actual recipient should collect and acknowledge it after reading. An already-authorized Codex coordinator can use native messaging to notify that recipient of the original mailbox ID. Keep peer provenance and the existing assignment; do not resend the original or assume the mailbox will wake the chat. Forwarding through another local chat requires your authorization for that recipient and scope.
 
 ## How local delivery works
 
 
 ```mermaid
 flowchart TB
-    C["Codex terminal / Codex desktop chat"]
+    C["Codex terminal / local Codex desktop chat"]
     A["Claude Code terminal"]
     P["AgentPeers local MCP<br/>one copy per client"]
     D[("External SQLite mailbox<br/>messages and read receipts")]

@@ -15,7 +15,7 @@ import time
 import uuid
 
 from . import __version__
-from .config import setting
+from .config import setting, connection, connection_env
 from .unixrpc import SharedServer
 from .desktop_wake import enabled as desktop_wake_enabled
 
@@ -46,8 +46,7 @@ def owned_path(path, kind):
 
 
 def claude_home():
-    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or
-                os.environ.get("ANTHROPIC_CONFIG_DIR") or Path.home() / ".claude")
+    return connection().claude_home
 
 
 def claude_sessions():
@@ -105,7 +104,7 @@ class AppServer:
         command = [setting("CODEX", "codex"), "app-server"]
         self.proc = subprocess.Popen(command,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, text=True)
+                                     stderr=subprocess.DEVNULL, text=True, env=connection_env())
         self.lines = queue.Queue()
         def read():
             for line in self.proc.stdout:
@@ -292,7 +291,7 @@ class Desktop:
         self.timeout = timeout
 
     def __enter__(self):
-        home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        home = connection().codex_home
         path = home / "ipc" / "ipc.sock"
         try:
             owned_path(path, stat.S_ISSOCK)

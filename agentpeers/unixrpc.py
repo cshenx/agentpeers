@@ -13,6 +13,8 @@ import struct
 import time
 import uuid
 
+from .config import connection
+
 MAX_FRAME = 4_000_000
 
 
@@ -23,7 +25,7 @@ class SharedServer:
     def __enter__(self):
         from .native import Unavailable, owned_path
         from . import __version__
-        home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        home = connection().codex_home
         path = home / "app-server-control" / "app-server-control.sock"
         self.sock = None
         try:
