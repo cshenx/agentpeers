@@ -6,6 +6,7 @@ import sys
 from .core import Bridge, resolve_actor
 from .addressing import name_for
 from . import native
+from .config import connection, configure_connection
 
 
 def main():
@@ -19,6 +20,13 @@ def main():
     listing = sub.add_parser("list", help="discover local Claude Code and Codex sessions")
     listing.add_argument("--runtime", choices=["codex", "claude", "all"], default="all")
     sub.add_parser("whoami", help="show this local session identity")
+    paths = sub.add_parser("connection", help="inspect or configure private local profile paths; never connects or sends")
+    actions = paths.add_subparsers(dest="connection_action", required=True)
+    actions.add_parser("show", help="show resolved nonsecret profile and mailbox paths")
+    configure = actions.add_parser("configure", help="create a private path-only connection file in native plugin data")
+    configure.add_argument("--data-dir", help="exact plugin data directory reported by the native client")
+    for field in ("codex-home", "claude-home", "mailbox-home"):
+        configure.add_argument("--" + field, required=True)
     waking = sub.add_parser("desktop-wake", help="opt in to opening unloaded destination chats in Codex desktop")
     waking.add_argument("mode", choices=["enable", "disable", "status"], default="status", nargs="?")
     checking = sub.add_parser("doctor", help="check local plugin dependencies and registrations without sending")
@@ -55,7 +63,14 @@ def main():
     if args.command == "personal":
         parser.error("Place personal immediately after agentpeers; --from applies only to local sessions.")
     try:
-        if args.command == "desktop-wake":
+        if args.command == "connection":
+            output = (connection().describe() if args.connection_action == "show" else
+                      configure_connection(args.codex_home, args.claude_home, args.mailbox_home, args.data_dir))
+        else:
+            connection()  # Validate explicit connection settings before any native action.
+        if args.command == "connection":
+            pass
+        elif args.command == "desktop-wake":
             from .desktop_wake import policy
             output = policy(None if args.mode == "status" else args.mode == "enable")
         elif args.command == "list":

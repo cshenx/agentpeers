@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 — local connection profiles
+
+- Add optional private connection settings for custom Claude Code/Codex profiles and a shared mailbox when a client filters MCP environment variables. Ordinary installations retain their defaults and existing messages.
+- Validate profile configuration before session discovery; reject conflicting settings, unsafe files and concurrent attempts to replace another connection.
+- Preserve Claude’s normal registration lookup when only the mailbox changes, while respecting explicitly selected profiles.
+- Clarify local Codex receiving requirements, saved-message recovery and the limits of desktop wake. Document an observed Codex 0.164.0 terminal approval recovery without changing permission policy.
+
 ## 0.8.0 — cloud source preview
 
 - Add a separate ordinary ChatGPT → Dot factual-context connection, with discoverable owner-approved topics and sources, per-chat permission and explicit answer retrieval.

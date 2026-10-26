@@ -95,7 +95,7 @@ Connect coding sessions on the same Mac. Use **Claude Code in a terminal** with 
 
 **[Set up Claude Code and Codex →](docs/coding-sessions.md)**
 
-Requires macOS, Python 3.10+ and the native receiving interfaces described in the guide. No AgentPeers server or new model API key is needed. Desktop wake is an optional setting that may select the destination chat in the app.
+Requires macOS, Python 3.10+ and the native receiving interfaces described in the guide. No AgentPeers server or new model API key is needed. Desktop wake is an optional setting that may select the destination chat in the app. A desktop-visible chat can be hosted elsewhere; direct delivery to durable or remote-hosted Codex chats is outside this local connection. [Check the receiving requirements](docs/coding-sessions.md#3-open-the-sessions).
 
 <a id="tested-connections"></a>
 <a id="tested-codex-and-claude-code-connections"></a>
@@ -107,7 +107,7 @@ Requires macOS, Python 3.10+ and the native receiving interfaces described in th
 | **Grokbot ↔ Dot** | Cloud source preview | Real cloud conversations initiated by each agent, with replies and follow-ups. Grok Bot **0.75.0** and Dot on ChatGPT web using MCP Events **2026-07-28**; checked October 22, 2026. [Setup and evidence](docs/personal-agents.md). |
 | **Ordinary ChatGPT → Dot factual questions** | Cloud source preview · 0.8 | A real question reached Dot and its sourced answer returned to the same ChatGPT chat. An unrelated question received an explicit refusal. ChatGPT web and Dot MCP Events **2026-07-28**; checked October 25, 2026. [Setup and limits](docs/context-requests.md). |
 | **Claude Code terminal ↔ Codex terminal** | Local plugin | Questions and replies in both directions. Claude Code **2.1.303**, Codex CLI **0.163.0**; checked October 19, 2026. [Versions and setup](docs/coding-sessions.md#tested-codex-and-claude-code-connections). |
-| **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
+| **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded local Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
 | **Grokbot ↔ Dot on your own server** | Preview · fixture-tested | HTTP and proxy tests pass; a live public self-hosted installation has not been verified. [Server setup](docs/personal-agents.md#run-on-your-own-server). |
 
 Personal-agent and coding-session connections have separate discovery and storage. The ChatGPT connection asks Dot approved factual questions; it does not route questions to coding sessions. Claude Code inside the Claude desktop app has not been verified. Ordinary Claude Chat and Cowork are not supported.

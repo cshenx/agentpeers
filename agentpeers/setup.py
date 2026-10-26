@@ -12,7 +12,7 @@ import sys
 import uuid
 
 from . import __version__, native
-from .config import setting
+from .config import setting, connection, connection_env
 from .core import Bridge, state_dir, resolve_actor
 from .addressing import is_session_id, resolve_name
 
@@ -20,7 +20,7 @@ CHALLENGE_PREFIX = "AGENTPEERS-SETUP:"
 
 
 def command_json(command):
-    result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=15, env=connection_env())
     if result.returncode:
         raise ValueError("native inventory command failed; check the client's configuration")
     return json.loads(result.stdout)
@@ -50,8 +50,7 @@ def registrations():
         result["codex"] = {"error": "Could not inspect Codex registrations. Run codex plugin list and codex mcp list."}
     try:
         home = native.claude_home()
-        config_path = (home / ".claude.json" if os.environ.get("CLAUDE_CONFIG_DIR")
-                       or os.environ.get("ANTHROPIC_CONFIG_DIR") else Path.home() / ".claude.json")
+        config_path = home / ".claude.json" if connection().claude_explicit else Path.home() / ".claude.json"
         config = read_json(config_path, {})
         settings = read_json(home / "settings.json", {})
         registry = read_json(home / "plugins" / "installed_plugins.json", {})
@@ -82,6 +81,7 @@ def registrations():
 
 def doctor(actor=None):
     """No message submission, model generation or configuration writes."""
+    resolved = connection()  # Invalid explicit paths must stop before any discovery.
     if actor is None:
         try:
             actor = resolve_actor()
@@ -191,7 +191,7 @@ def doctor(actor=None):
         if row.get("plugin") and row.get("manual_mcp"):
             add(client + "_duplicate", "warning", "Both manual MCP and plugin registrations exist",
                 "After verifying the plugin, remove only the old agentpeers manual MCP entry.")
-    return {"version": __version__, "checked_session": actor,
+    return {"version": __version__, "checked_session": actor, "connection": resolved.describe(),
             "ready_for_test": not any(c["status"] == "fail" for c in checks),
             "checks": checks, "registrations": registered, "message_test": "not_run",
             "note": "Configuration and handshake checks do not prove delivery. Run a setup challenge and verify both read receipts."}

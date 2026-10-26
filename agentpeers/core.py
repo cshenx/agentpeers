@@ -8,18 +8,12 @@ import time
 import uuid
 
 from . import native
-from .config import setting
+from .config import setting, connection
 from .addressing import inventory, is_session_id, name_for, native_name, resolve_name
 
 
 def state_dir():
-    configured = setting("HOME")
-    if configured is not None:
-        return Path(configured)
-    # Preserve the external mailbox when upgrading the former private plugin.
-    # Never move, copy or inspect either agent's private conversation database.
-    legacy = Path.home() / ".local/state/peerbridge"
-    return legacy if legacy.exists() or legacy.is_symlink() else Path.home() / ".local/state/agentpeers"
+    return connection().mailbox_home
 
 
 class Bridge:
