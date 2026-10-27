@@ -7,6 +7,7 @@ from .core import Bridge, resolve_actor
 from .addressing import name_for
 from . import native
 from .config import connection, configure_connection
+from . import personal_client
 
 
 def main():
@@ -17,6 +18,30 @@ def main():
                                      epilog="Local session commands connect Claude Code and Codex on one Mac. Use agentpeers personal --help for the separate Grokbot and Dot connection service.")
     parser.add_argument("--from", dest="actor", help="own session address; normally inferred")
     sub = parser.add_subparsers(dest="command", required=True)
+    direct = sub.add_parser('connect-dot', help='connect this OS account directly to Dot through your existing AgentPeers service')
+    direct.add_argument('--url', required=True)
+    direct.add_argument('--connector', required=True, help='unique local- ID for this machine/profile')
+    direct.add_argument('--name', required=True, help='display name shown to Dot')
+    sub.add_parser('personal-peers', help='discover directly connected personal agents')
+    sub.add_parser('personal-inbox', help="recover this session's existing personal-agent conversations and replies")
+    direct_send = sub.add_parser('personal-send', help='send directly to a connected personal agent')
+    direct_send.add_argument('--to', required=True)
+    direct_send.add_argument('--scope', required=True)
+    direct_send.add_argument('--id')
+    direct_send.add_argument('--expects', choices=['none', 'reply'], default='reply')
+    direct_send.add_argument('--wait', type=int, default=30)
+    direct_reply = sub.add_parser('personal-reply', help='reply to a personal-agent message in this session')
+    direct_reply.add_argument('id')
+    direct_reply.add_argument('--reply-id', required=True)
+    direct_reply.add_argument('--expects', choices=['none', 'reply'], default='none')
+    for command in (direct_send, direct_reply):
+        source = command.add_mutually_exclusive_group(required=True)
+        source.add_argument('--message')
+        source.add_argument('--message-file')
+    direct_status = sub.add_parser('personal-status', help="retrieve this session's existing personal-agent reply")
+    direct_status.add_argument('id')
+    direct_status.add_argument('--wait', type=int, default=0)
+    sub.add_parser('personal-ack', help='acknowledge a personal reply after reading it').add_argument('id')
     listing = sub.add_parser("list", help="discover local Claude Code and Codex sessions")
     listing.add_argument("--runtime", choices=["codex", "claude", "all"], default="all")
     sub.add_parser("whoami", help="show this local session identity")
@@ -70,6 +95,25 @@ def main():
             connection()  # Validate explicit connection settings before any native action.
         if args.command == "connection":
             pass
+        elif args.command == 'connect-dot':
+            output = personal_client.connect(args.url, args.connector, args.name)
+        elif args.command.startswith('personal-'):
+            actor = resolve_actor(args.actor)
+            fields = {}
+            if args.command in ('personal-send', 'personal-reply'):
+                source = args.message_file or args.message
+                text = sys.stdin.read(32001) if source == '-' else (Path(source).read_text(encoding='utf-8') if args.message_file else source)
+                fields = {'message': text, 'expects': args.expects}
+                if args.command == 'personal-send':
+                    fields.update(to=args.to, scope=args.scope)
+                    if args.id: fields['message_id'] = args.id
+                else:
+                    fields.update(message_id=args.id, reply_id=args.reply_id)
+            elif args.command in ('personal-status', 'personal-ack'):
+                fields['message_id'] = args.id
+            tool = {'personal-peers': 'list_peers', 'personal-inbox': 'inbox', 'personal-send': 'send_message',
+                    'personal-reply': 'reply', 'personal-status': 'message_status', 'personal-ack': 'acknowledge'}[args.command]
+            output = personal_client.call(actor, tool, fields, getattr(args, 'wait', 0))
         elif args.command == "desktop-wake":
             from .desktop_wake import policy
             output = policy(None if args.mode == "status" else args.mode == "enable")
@@ -128,7 +172,7 @@ def main():
         if args.command == "doctor" and (output.get("ready_for_test") is False or
                 "message_test" in output and output["message_test"] not in ("not_run", "round_trip_verified")):
             sys.exit(2)
-        if isinstance(output, dict) and output.get("status") in ("unavailable", "unconfirmed"):
+        if isinstance(output, dict) and (output.get("status") in ("unavailable", "unconfirmed") or output.get('state') in ('unavailable', 'unconfirmed')):
             sys.exit(2)
     except Exception as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)

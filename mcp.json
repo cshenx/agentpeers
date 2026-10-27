@@ -9,7 +9,7 @@
       ],
       "cwd": "./",
       "env": {
-        "AGENTPEERS_PLUGIN_VERSION": "0.8.1"
+        "AGENTPEERS_PLUGIN_VERSION": "0.9.0"
       }
     }
   }

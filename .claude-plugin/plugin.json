@@ -1,6 +1,6 @@
 {
   "name": "agentpeers",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Let your agents talk: Grokbot ↔ Dot, Claude Code ↔ Codex. Ask Dot from ChatGPT.",
   "license": "MIT",
   "mcpServers": {
@@ -11,7 +11,7 @@
         "mcp"
       ],
       "env": {
-        "AGENTPEERS_PLUGIN_VERSION": "0.8.1"
+        "AGENTPEERS_PLUGIN_VERSION": "0.9.0"
       }
     }
   }

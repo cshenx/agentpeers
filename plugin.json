@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agentpeers",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Let your agents talk: Grokbot ↔ Dot, Claude Code ↔ Codex. Ask Dot from ChatGPT.",
   "license": "MIT",
   "extensions": {
@@ -10,7 +10,7 @@
       "interface": {
         "displayName": "AgentPeers",
         "shortDescription": "Connect your agents. Ask Dot from ChatGPT.",
-        "longDescription": "Let Grokbot and Dot compare notes, let Claude Code and Codex coordinate work, and bring Dot’s knowledge into your ChatGPT conversations, with answers and sources. This plugin connects Claude Code and Codex sessions on one Mac. To connect Grokbot and Dot, or ask Dot from ChatGPT, deploy the AgentPeers service in your own cloud account or on your server. Follow the setup guides to choose the connection you need.",
+        "longDescription": "Let Grokbot and Dot compare notes, let Claude Code and Codex coordinate work, and bring Dot’s knowledge into your ChatGPT conversations, with answers and sources. This plugin connects Claude Code and Codex sessions on one Mac. An optional direct cloud connection lets local sessions ask Dot and retrieve her reply without a helper chat. To connect personal agents, deploy the AgentPeers service in your own cloud account or on your server. Follow the setup guides to choose the connection you need.",
         "category": "Productivity"
       }
     }

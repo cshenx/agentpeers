@@ -98,6 +98,41 @@ class CloudRuntime(unittest.TestCase):
     def tool(self,token,name,**args):
         result=self.rpc(token,'tools/call',{'name':name,'arguments':args});self.assertNotIn('isError',result);return result['structuredContent']
 
+    def test_direct_local_session_round_trip_and_wrong_session_rejection(self):
+        import uuid
+        from urllib.parse import urlencode
+        session = 'claude:' + str(uuid.uuid4())
+        other = 'codex:' + str(uuid.uuid4())
+        args = {'owner_key': 'o'*40, 'connector': 'local-runtime', 'name': 'Runtime sessions'}
+        headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Origin': 'http://127.0.0.1:' + str(self.port)}
+        status, _, config = self.request('POST', '/local/connect', urlencode(args), headers=headers)
+        self.assertEqual(status, 200, config)
+        status, _, again = self.request('POST', '/local/connect', urlencode(args), headers=headers)
+        self.assertEqual(config, again)
+        def local(who, tool, **fields):
+            return self.request('POST', '/v1/local', {'session': who, 'tool': tool, 'arguments': fields}, config['key'])
+        status, _, sent = local(session, 'send_message', to='Dot', message='Synthetic runtime question', scope='Synthetic only', message_id='local-runtime-question')
+        self.assertEqual(status, 200, sent)
+        token = self.connect_dot()
+        self.tool(token, 'acknowledge', message_id=sent['id'])
+        answer = self.tool(token, 'reply', message_id=sent['id'], message='Synthetic runtime answer', reply_id='local-runtime-reply', expects='none')
+        self.assertEqual(answer['state'], 'available')
+        status, _, result = local(session, 'message_status', message_id=sent['id'])
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result['reply_messages'][0]['body'], 'Synthetic runtime answer')
+        self.assertIsNone(result['reply_messages'][0]['read_at'])
+        self.assertEqual(local(other, 'message_status', message_id=sent['id'])[0], 400)
+        self.assertEqual(local(session, 'acknowledge', message_id='local-runtime-reply')[0], 200)
+        # Existing peer credential and connection remain valid after adding local.
+        status, _, peers = self.request('POST', '/v1/call', {'tool':'list_peers','arguments':{}}, self.grok)
+        self.assertEqual(status, 200, peers)
+        self.assertIn('dot', [p['id'] for p in peers['peers']])
+        status, _, result = self.request('POST', '/local/disconnect', urlencode(args), headers=headers)
+        self.assertEqual(status, 200, result)
+        self.assertTrue(result['messages_preserved'])
+        self.assertEqual(local(session, 'message_status', message_id=sent['id'])[0], 401)
+        self.assertEqual(self.request('POST', '/v1/call', {'tool':'list_peers','arguments':{}}, self.grok)[0], 200)
+
     def subscribe(self,token):
         return self.rpc(token,'events/subscribe',{'name':'message.created','arguments':{'recipient':'dot'},'delivery':{'mode':'webhook','url':'https://callbacks.example/event','secret':'whsec_'+base64.b64encode(b'k'*32).decode()}})
 
