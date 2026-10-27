@@ -12,6 +12,16 @@ def is_session_id(address):
         return False
 
 
+def validate_destination(address):
+    if not isinstance(address, str) or not address.strip() or len(address) > 2000:
+        raise ValueError("destination must be an exact session ID or native name (1–2000 characters)")
+    if address.startswith(("codex:", "claude:")) and not is_session_id(address):
+        raise ValueError("Incomplete or invalid session ID. Use the full runtime:UUID from discovery "
+                         "or an exact native session name; shortened IDs are not supported. "
+                         "No message created or submitted. This is an address error, not a receiver outage. "
+                         "The local session list can omit remote Codex chats; absence does not mean they ended.")
+
+
 def inventory():
     rows = []
     for runtime, discover in [("claude", native.claude_sessions), ("codex", native.codex_sessions)]:
