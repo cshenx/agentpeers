@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 — clearer addresses and receiving setup
+
+- Reject shortened or invalid `codex:` and `claude:` session IDs before discovery or message creation, with a structured address correction instead of a misleading receiver failure. Full IDs and ordinary session names remain supported.
+- Explain that local discovery may omit cloud-hosted Codex coordinators; the direct Dot route reaches Dot, not a separate Codex chat.
+- Document the Dot listener’s required approval of a new local connector, explicit refusals for rejected questions, and the recovered live Claude Code exchange.
+
 ## 0.9.0 — local sessions can ask Dot directly
 
 - Optional direct connection from Claude Code and Codex sessions to the owner's existing cloud service; no helper Codex chat or desktop receiving owner is needed.

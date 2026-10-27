@@ -1,6 +1,6 @@
 {
   "name": "agentpeers-cloud",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Deploy AgentPeers personal-agent messaging and ChatGPT factual-context access in your Cloudflare account.",
   "scripts": {
