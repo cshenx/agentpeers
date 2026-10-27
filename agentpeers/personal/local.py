@@ -49,6 +49,11 @@ class LocalSessions:
         if not isinstance(args, dict):
             raise Rejected("Arguments must be an object")
         with s.lock:
+            if name == 'inbox':
+                if args:
+                    raise Rejected('inbox takes no arguments')
+                rows = s.db.execute('SELECT l.conversation_id FROM local_conversations l JOIN messages m ON m.id=l.conversation_id WHERE l.connector=? AND l.session=? ORDER BY m.created DESC LIMIT 100', (connector, session)).fetchall()
+                return {'conversations': [self.call(connector, session, 'message_status', {'message_id': row['conversation_id']}) for row in rows]}
             if name == "list_peers":
                 if args:
                     raise Rejected("list_peers takes no arguments")

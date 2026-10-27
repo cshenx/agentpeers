@@ -23,6 +23,7 @@ def main():
     direct.add_argument('--connector', required=True, help='unique local- ID for this machine/profile')
     direct.add_argument('--name', required=True, help='display name shown to Dot')
     sub.add_parser('personal-peers', help='discover directly connected personal agents')
+    sub.add_parser('personal-inbox', help="recover this session's existing personal-agent conversations and replies")
     direct_send = sub.add_parser('personal-send', help='send directly to a connected personal agent')
     direct_send.add_argument('--to', required=True)
     direct_send.add_argument('--scope', required=True)
@@ -110,7 +111,7 @@ def main():
                     fields.update(message_id=args.id, reply_id=args.reply_id)
             elif args.command in ('personal-status', 'personal-ack'):
                 fields['message_id'] = args.id
-            tool = {'personal-peers': 'list_peers', 'personal-send': 'send_message',
+            tool = {'personal-peers': 'list_peers', 'personal-inbox': 'inbox', 'personal-send': 'send_message',
                     'personal-reply': 'reply', 'personal-status': 'message_status', 'personal-ack': 'acknowledge'}[args.command]
             output = personal_client.call(actor, tool, fields, getattr(args, 'wait', 0))
         elif args.command == "desktop-wake":
@@ -171,7 +172,7 @@ def main():
         if args.command == "doctor" and (output.get("ready_for_test") is False or
                 "message_test" in output and output["message_test"] not in ("not_run", "round_trip_verified")):
             sys.exit(2)
-        if isinstance(output, dict) and output.get("status") in ("unavailable", "unconfirmed"):
+        if isinstance(output, dict) and (output.get("status") in ("unavailable", "unconfirmed") or output.get('state') in ('unavailable', 'unconfirmed')):
             sys.exit(2)
     except Exception as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)

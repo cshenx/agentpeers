@@ -62,6 +62,8 @@ class DirectDot(unittest.TestCase):
             self.send(B)
         self.assertEqual(len(self.store.inbox('dot')), 1)
         self.assertEqual(self.send()['id'], first['id'])
+        self.assertEqual([r['id'] for r in self.call(A, 'inbox')['conversations']], [first['id']])
+        self.assertEqual(self.call(B, 'inbox')['conversations'], [])
         with self.assertRaises(Rejected):
             self.call(A, 'send_message', to='Dot', message='', scope='test', message_id='reserved')
         with self.assertRaisesRegex(Rejected, 'another local session'):
@@ -73,8 +75,7 @@ class DirectDot(unittest.TestCase):
             self.send(mid='legacy')
         with self.assertRaisesRegex(Rejected, 'dedicated local connector'):
             self.app.local.call('dot', A, 'list_peers', {})
-        with self.assertRaises(Rejected):
-            self.call(A, 'inbox')
+        self.assertEqual(self.call(B, 'inbox')['conversations'], [])
 
     def test_followup_preserves_scope_and_expiry_and_revocation_apply(self):
         self.send()
@@ -135,13 +136,27 @@ class LocalClient(unittest.TestCase):
             path.chmod(0o644)
             with self.assertRaisesRegex(ValueError, 'private owned'):
                 personal_client.load()
+            with self.assertRaises(ValueError):
+                personal_client.validate({**data, 'key': 'x'*40 + '\nInjected: bad'})
+
+    def test_http_client_identifies_itself_and_never_echoes_refused_credentials(self):
+        import urllib.error
+        opener = unittest.mock.Mock()
+        opener.open.side_effect = urllib.error.HTTPError('https://bridge.example/v1/local', 403, 'blocked', {}, None)
+        with patch.object(personal_client.urllib.request, 'build_opener', return_value=opener):
+            with self.assertRaises(personal_client.Refused) as failed:
+                personal_client.post('https://bridge.example/v1/local', {}, key='private-test-key')
+        self.assertNotIn('private-test-key', str(failed.exception))
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'), 'AgentPeers/' + mcp.__version__)
 
     def test_network_uncertainty_never_automatically_resends(self):
         config = {'url': 'https://bridge.example', 'key': 'not-a-real-key'}
         with patch.object(personal_client, 'load', return_value=config), \
              patch.object(personal_client, 'post', side_effect=ValueError('unknown')) as post:
-            with self.assertRaisesRegex(ValueError, 'unknown'):
-                personal_client.call(A, 'send_message', {'message_id': 'same-id'}, 30)
+            result = personal_client.call(A, 'send_message', {'message_id': 'same-id'}, 30)
+            self.assertEqual(result['state'], 'unconfirmed')
+            self.assertEqual(result['id'], 'same-id')
         self.assertEqual(post.call_count, 1)
 
     def test_mcp_retrieves_answer_in_calling_session_without_desktop_or_identity_override(self):

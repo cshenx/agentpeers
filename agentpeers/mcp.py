@@ -18,6 +18,8 @@ OPTIONS = {"expects": {"type": "string", "enum": ["none", "ack", "reply"]},
 TOOLS = [
     ("list_personal_peers", "Discover directly connected personal agents such as Dot. These use the cloud service, not a helper Codex chat. Does not send messages.",
      {"sender": {"type": "string"}}, []),
+    ("personal_inbox", "Recover this session's existing personal-agent conversations and replies after an interrupted send. Does not resend or acknowledge; other local sessions are excluded.",
+     {"sender": {"type": "string"}}, []),
     ("send_personal_message", "Talk directly to a discovered personal agent within the human's existing scope. No desktop helper is needed. Replies stay with this originating session. Use a stable id; never automatically resend after uncertainty. A bounded wait retrieves an answer; it does not wake an idle local session later.",
      {"to": {"type": "string"}, "message": {"type": "string"}, "scope": {"type": "string"},
       "id": {"type": "string"}, "sender": {"type": "string"},
@@ -102,12 +104,12 @@ def validate_arguments(name, args):
 
 def dispatch(name, args, actor=None):
     validate_arguments(name, args)
-    if name in ('list_personal_peers', 'send_personal_message', 'personal_message_status',
+    if name in ('list_personal_peers', 'personal_inbox', 'send_personal_message', 'personal_message_status',
                 'reply_personal_message', 'acknowledge_personal_message'):
         if actor is not None and args.get('sender') not in (None, actor):
             raise ValueError("sender differs from the MCP server's bound session")
         sender = resolve_actor(args.get('sender'), observed=actor)
-        mapping = {'list_personal_peers': 'list_peers', 'send_personal_message': 'send_message',
+        mapping = {'list_personal_peers': 'list_peers', 'personal_inbox': 'inbox', 'send_personal_message': 'send_message',
                    'personal_message_status': 'message_status', 'reply_personal_message': 'reply',
                    'acknowledge_personal_message': 'acknowledge'}
         fields = {({'id': 'message_id'}.get(k, k)): v for k, v in args.items()
