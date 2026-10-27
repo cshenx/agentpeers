@@ -9,7 +9,7 @@ import uuid
 
 from . import native
 from .config import setting, connection
-from .addressing import inventory, is_session_id, name_for, native_name, resolve_name
+from .addressing import inventory, is_session_id, name_for, native_name, resolve_name, validate_destination
 
 
 def state_dir():
@@ -226,8 +226,7 @@ class Bridge:
             raise ValueError("summary must be one line")
         if not is_session_id(sender):
             raise ValueError("sender must be codex:UUID or claude:UUID")
-        if not isinstance(recipient, str) or not recipient.strip() or len(recipient) > 2000:
-            raise ValueError("destination must be an exact session ID or native name (1–2000 characters)")
+        validate_destination(recipient)
         requested_to = recipient
         by_name = not is_session_id(recipient)
         original = None
