@@ -9,12 +9,28 @@ from .core import Bridge, resolve_actor
 # Native plugin managers may remove an old cache while its MCP process lives.
 # Load owned modules at startup so later setup calls never import deleted files.
 from .setup import doctor, start_probe, verify_probe
+from . import personal_client
 
 OPTIONS = {"expects": {"type": "string", "enum": ["none", "ack", "reply"]},
            "summary": {"type": "string", "maxLength": 300},
            "record_ref": {"type": "string", "maxLength": 2000}}
 
 TOOLS = [
+    ("list_personal_peers", "Discover directly connected personal agents such as Dot. These use the cloud service, not a helper Codex chat. Does not send messages.",
+     {"sender": {"type": "string"}}, []),
+    ("send_personal_message", "Talk directly to a discovered personal agent within the human's existing scope. No desktop helper is needed. Replies stay with this originating session. Use a stable id; never automatically resend after uncertainty. A bounded wait retrieves an answer; it does not wake an idle local session later.",
+     {"to": {"type": "string"}, "message": {"type": "string"}, "scope": {"type": "string"},
+      "id": {"type": "string"}, "sender": {"type": "string"},
+      "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 30},
+      "expects": {"type": "string", "enum": ["none", "reply"]}}, ["to", "message", "scope"]),
+    ("personal_message_status", "Retrieve this session's existing personal-agent question and reply content, without resending or marking it read. Saved is not delivered. Never collect another session's answer.",
+     {"id": {"type": "string"}, "sender": {"type": "string"},
+      "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 30}}, ["id"]),
+    ("reply_personal_message", "Reply directly to a consumed personal-agent message, preserving its conversation and scope.",
+     {"id": {"type": "string"}, "message": {"type": "string"}, "reply_id": {"type": "string"},
+      "sender": {"type": "string"}, "expects": {"type": "string", "enum": ["none", "reply"]}}, ["id", "message", "reply_id"]),
+    ("acknowledge_personal_message", "Acknowledge a personal-agent reply only after this originating session actually consumed it.",
+     {"id": {"type": "string"}, "sender": {"type": "string"}}, ["id"]),
     ("setup", "Check local dependencies and registrations without arguments. With to and human-authorized scope, "
      "send one real setup challenge (may wake a peer and consume usage). With probe_id, verify both read receipts. "
      "Never infer delivery from registration or a socket write.",
@@ -73,9 +89,11 @@ def validate_arguments(name, args):
         raise InvalidArguments("Unexpected arguments; use the fields advertised by tools/list.")
     for key, value in args.items():
         schema = tool[2][key]
-        expected = str if schema["type"] == "string" else bool
-        if not isinstance(value, expected):
+        expected = {"string": str, "boolean": bool, "integer": int}[schema["type"]]
+        if type(value) is not expected:
             raise InvalidArguments(key + " must be a " + schema["type"] + ".", [key])
+        if "minimum" in schema and not schema["minimum"] <= value <= schema["maximum"]:
+            raise InvalidArguments(key + " must be between 0 and 30.", [key])
         if "enum" in schema and value not in schema["enum"]:
             raise InvalidArguments(key + " must be one of: " + ", ".join(schema["enum"]) + ".", [key])
         if "maxLength" in schema and len(value) > schema["maxLength"]:
@@ -84,6 +102,17 @@ def validate_arguments(name, args):
 
 def dispatch(name, args, actor=None):
     validate_arguments(name, args)
+    if name in ('list_personal_peers', 'send_personal_message', 'personal_message_status',
+                'reply_personal_message', 'acknowledge_personal_message'):
+        if actor is not None and args.get('sender') not in (None, actor):
+            raise ValueError("sender differs from the MCP server's bound session")
+        sender = resolve_actor(args.get('sender'), observed=actor)
+        mapping = {'list_personal_peers': 'list_peers', 'send_personal_message': 'send_message',
+                   'personal_message_status': 'message_status', 'reply_personal_message': 'reply',
+                   'acknowledge_personal_message': 'acknowledge'}
+        fields = {({'id': 'message_id'}.get(k, k)): v for k, v in args.items()
+                  if k not in ('sender', 'wait_seconds')}
+        return personal_client.call(sender, mapping[name], fields, args.get('wait_seconds', 0))
     if name == "setup":
         if args.get("to") and args.get("probe_id"):
             raise ValueError("send a new challenge or verify an existing one, not both")

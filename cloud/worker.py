@@ -133,6 +133,31 @@ class Mailbox(DurableObject):
             'last_subscription_attempt': dict(last) if last else None,
             'approved_callback_hosts': self.app.store.config['callback_hosts'] if self.app else []})
 
+    def connect_local(self, args, source):
+        self.authorize_owner(args, source, '/local/connect')
+        if not self.app:
+            raise Rejected('Connect Dot first; no local connection was created')
+        config = self.app.local.connection(self.app.store.config, args.get('connector'), args.get('name'))
+        saved = {k: v for k, v in config.items() if k != 'owner_key'}
+        self.db.execute('INSERT OR REPLACE INTO ap_settings VALUES(1,1,?)', (json.dumps(saved),))
+        self.configure(saved)
+        peer = config['peers'][args['connector']]
+        return response(200, {'version': 1, 'url': config['public_url'],
+                              'connector': args['connector'], 'key': peer['key']})
+
+    def disconnect_local(self, args, source):
+        self.authorize_owner(args, source, '/local/disconnect')
+        connector = args.get('connector')
+        if not self.app or self.app.store.config['peers'].get(connector, {}).get('platform') != 'local':
+            raise Rejected('Select an existing local connector; no other peer can be removed here')
+        config = json.loads(json.dumps(self.app.store.config))
+        del config['peers'][connector]
+        config['connections'] = [pair for pair in config['connections'] if connector not in pair]
+        saved = {k: v for k, v in config.items() if k != 'owner_key'}
+        self.db.execute('INSERT OR REPLACE INTO ap_settings VALUES(1,1,?)', (json.dumps(saved),))
+        self.configure(saved)
+        return response(200, {'disconnected': connector, 'messages_preserved': True})
+
     def subscription_started(self, endpoint, resource, raw):
         # One bounded, owner-only diagnostic row. Never retain a body, URL,
         # credential, signing secret or client-supplied error text.
@@ -244,12 +269,16 @@ class Mailbox(DurableObject):
         source = str(request.headers.get('CF-Connecting-IP', 'unknown'))
         try:
             self.owner_key()
-            if parsed.path in ('/', '/setup', '/status'):
+            if parsed.path in ('/', '/setup', '/status', '/local/connect', '/local/disconnect'):
                 if request.method == 'GET' and parsed.path != '/status':
                     return self.setup_page(origin)
                 if request.method != 'POST' or request.headers.get('Origin') != origin:
                     raise Rejected('Save settings from this deployment’s own setup page')
                 raw = await bounded_body(request.body)
+                if parsed.path == '/local/connect':
+                    return self.connect_local(form(raw), source)
+                if parsed.path == '/local/disconnect':
+                    return self.disconnect_local(form(raw), source)
                 if parsed.path == '/status':
                     return self.owner_status(form(raw), source)
                 return self.save_setup(form(raw), origin, source)

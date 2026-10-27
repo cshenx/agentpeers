@@ -175,13 +175,24 @@ class Endpoint:
             if path.startswith("/mcp/"):
                 resource = self.app.store.config["public_url"] + path
                 actor = self.auth(resource)
+                if self.app.store.config["peers"].get(actor, {}).get("platform") == "local":
+                    raise Rejected("Local connectors must use the session-bound endpoint")
                 request = self.read_body()
                 result = yield from self.app.rpc_steps(actor, request)
                 return self.output(200 if result is not None else 202, result)
             if path == "/v1/call":
                 actor = self.auth()
+                if self.app.store.config["peers"].get(actor, {}).get("platform") == "local":
+                    raise Rejected("Local connectors must use the session-bound endpoint")
                 args = self.read_body()
                 return self.output(200, self.app.protocol.call(actor, args.get("tool"), args.get("arguments", {})))
+            if path == "/v1/local":
+                self.app.limit(self.source, path)
+                actor = self.auth()
+                args = self.read_body()
+                if set(args) != {"session", "tool", "arguments"}:
+                    raise Rejected("Use session, tool and arguments only")
+                return self.output(200, self.app.local.call(actor, args["session"], args["tool"], args["arguments"]))
             match = re.fullmatch(r"/callbacks/([A-Za-z0-9._:-]{1,100})/([A-Za-z0-9_-]{40,100})", path)
             if match:
                 return self.output(200, self.app.callback(*match.groups(), self.read_body()))

@@ -21,6 +21,34 @@ Self-hosting keeps the message store off Cloudflare. Grokbot and Dot still run o
 
 Both options require an existing Grokbot with cloud HTTP capability and a dedicated native messaging routine, and an existing Dot with custom MCP plugins and event-triggered tasks. Preserve the agents’ other jobs. This adapter targets MCP Events `2026-07-28`; availability in the actual account needs live verification. Connecting peers never grants new business permissions or bypasses native action review.
 
+## Talk to Dot from Claude Code or Codex
+
+The local plugin can connect directly to your existing AgentPeers cloud service. It sends to Dot’s listener and retrieves Dot’s reply in the session that asked. It does not send through a helper Codex chat, so that chat’s desktop or hosting state has no effect on delivery.
+
+From a checkout containing this feature, connect once per OS account/profile:
+
+```sh
+bin/agentpeers connect-dot --url https://YOUR-WORKER.workers.dev \
+  --connector local-my-mac --name 'My Mac sessions'
+```
+
+Enter your existing AgentPeers password at the hidden terminal prompt. Setup gives this connector its own messaging credential, stores it in a private `personal-client.json` beside the external local mailbox, and leaves Dot’s and Grokbot’s credentials and conversations unchanged. Use a different connector ID for each machine or isolated profile. The owner password is used only for setup and is never saved by the client. The current setup command requires the Cloudflare deployment; a self-hosted service needs an owner-configured local peer and private client file.
+
+After restarting or reconnecting the updated local MCP server, ask your agent to use `list_personal_peers`, `send_personal_message` and `personal_message_status`. For example: “Ask Dot which source to use for this project, then read her answer.” The agent still needs your authorization for the question’s subject. Your Dot listener must also permit these informational conversations; adding a connection does not override its saved rules.
+
+The command-line equivalent is:
+
+```sh
+bin/agentpeers personal-peers
+bin/agentpeers personal-send --to Dot --scope 'The informational question I authorized' \
+  --message 'Which source should I consult?' --wait 30
+bin/agentpeers personal-status MESSAGE_ID --wait 30
+```
+
+These commands infer the calling Claude Code or Codex session. Outside an agent session, use `--from runtime:UUID` only for your own already-verified identity. The returned ID identifies the same saved message; a wait ending is not a reason to resend. `personal-status` includes any reply text without marking it read; use `personal-ack REPLY_ID` only after consuming it. Follow-ups use `personal-reply REPLY_ID --reply-id NEW_ID --message '…'` and preserve the original scope.
+
+This version supports local-initiated conversations and replies. It waits at most 30 seconds per requested wait, then returns the current state so the agent can check that same conversation again. It does not run a background poller, wake an idle local agent or route a new unsolicited Dot message to a local session. A reply stays saved if its originating session closes. Session binding prevents accidental collection by another chat; all processes running as the same trusted OS user share access to the connector credential, so it is not a security boundary against hostile local code.
+
 ## Get the cloud source
 
 The cloud service is included in the main source tree. There is no tagged cloud release yet. Clone it into a new directory:

@@ -23,7 +23,7 @@ class CloudPackage(unittest.TestCase):
         prepare.prepare_runtime(self.root)
         paths = {p.relative_to(self.root / '.cloud-build/runtime').as_posix()
                  for p in (self.root / '.cloud-build/runtime').rglob('*') if p.is_file()}
-        self.assertEqual(len(paths), 16)
+        self.assertEqual(len(paths), 17)
         self.assertTrue({'worker.py','backend.py','agentpeers/personal/store.py',
                          'agentpeers/personal/context.py','agentpeers/personal/context_bridge.py'} <= paths)
         self.assertFalse(any('fixture' in p or p.endswith(('server.py','config.json','cli.py')) for p in paths))

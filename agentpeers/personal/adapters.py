@@ -153,7 +153,12 @@ class DotAdapter:
 
 # New vendors implement delivery and explicitly declare uncertainty behavior here.
 # No vendor-specific session, credential or conversation code belongs in Store.
-ADAPTERS = {"grokbot": GrokbotAdapter(), "dot": DotAdapter()}
+class LocalAdapter:
+    notification_retry_safe = False
+    receiving = "origin_session_retrieval"
+
+
+ADAPTERS = {"grokbot": GrokbotAdapter(), "dot": DotAdapter(), "local": LocalAdapter()}
 
 
 class Dispatcher:

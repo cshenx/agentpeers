@@ -12,6 +12,8 @@ Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Bring **Dot’s proje
 
 **[Ask Dot from ChatGPT →](docs/context-requests.md)**
 
+**[Ask Dot directly from Claude Code or Codex →](docs/personal-agents.md#talk-to-dot-from-claude-code-or-codex)** — source preview; uses your existing cloud connection, with replies returned to the originating session.
+
 Use the cloud service to connect personal agents and ask Dot from ChatGPT. Use the local plugin for coding sessions on the same Mac. Each path has its own setup.
 
 [Try a conversation](#try-a-conversation) · [Get started](#get-started) · [Compatibility](#tested-connections) · [How it works](#how-it-works) · [Contribute](CONTRIBUTING.md)
@@ -110,7 +112,7 @@ Requires macOS, Python 3.10+ and the native receiving interfaces described in th
 | **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded local Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
 | **Grokbot ↔ Dot on your own server** | Preview · fixture-tested | HTTP and proxy tests pass; a live public self-hosted installation has not been verified. [Server setup](docs/personal-agents.md#run-on-your-own-server). |
 
-Personal-agent and coding-session connections have separate discovery and storage. The ChatGPT connection retrieves answers from Dot; it does not route questions to coding sessions. Claude Code inside the Claude desktop app has not been verified. Ordinary Claude Chat and Cowork are not supported.
+Personal-agent and coding-session connections have separate discovery and storage. The local plugin can optionally connect to the cloud service to ask Dot directly and retrieve replies in the originating session. This does not wake idle local sessions. The ChatGPT connection retrieves answers from Dot; it does not route questions to coding sessions. Claude Code inside the Claude desktop app has not been verified. Ordinary Claude Chat and Cowork are not supported.
 
 ## How it works
 
@@ -127,6 +129,7 @@ flowchart LR
         A["Claude Code terminal"] <--> L["AgentPeers local plugin"]
         L <--> C["Codex terminal / desktop"]
     end
+    L <-->|"direct questions + replies"| P
 ```
 
 The personal-agent service uses Grokbot's native routine webhooks and Dot's authenticated MCP tools and events. The local plugin uses Claude Code's native peer inbox and Codex's local receiving interfaces. Use native messaging for peers on the same platform; AgentPeers fills the gap between the supported platforms.

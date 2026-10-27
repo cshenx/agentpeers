@@ -55,8 +55,8 @@ def validate(config):
     tokens, names = set(), set()
     for peer_id, peer in peers.items():
         identifier(peer_id)
-        if peer.get("platform") not in ("grokbot", "dot"):
-            raise Rejected("Implemented personal adapters: grokbot, dot")
+        if peer.get("platform") not in ("grokbot", "dot", "local"):
+            raise Rejected("Implemented personal adapters: grokbot, dot, local")
         name = peer.get("name", peer_id)
         if not isinstance(name, str) or not name.strip() or len(name) > 100 or name in names:
             raise Rejected("Peer names must be unique and contain 1–100 characters")

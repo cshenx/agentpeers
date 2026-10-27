@@ -174,7 +174,8 @@ class Store:
             def commit():
                 if not original:
                     self.db.execute("INSERT INTO conversations(id,a,b,scope,expires) VALUES(?,?,?,?,?)", (cid, actor, target, scope, self.clock() + self.config.get("conversation_seconds", 86400)))
-                self.db.execute("INSERT INTO messages(id,conversation_id,sender,recipient,body,reply_to,expects,created,state) VALUES(?,?,?,?,?,?,?,?,?)", (mid, cid, actor, target, body, reply_to, expects, self.clock(), "queued"))
+                state = "available" if self.config["peers"][target]["platform"] == "local" else "queued"
+                self.db.execute("INSERT INTO messages(id,conversation_id,sender,recipient,body,reply_to,expects,created,state) VALUES(?,?,?,?,?,?,?,?,?)", (mid, cid, actor, target, body, reply_to, expects, self.clock(), state))
                 self.event(mid, "saved")
             self.transaction(commit)
             return self._public(self._message(mid))

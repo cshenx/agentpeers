@@ -12,6 +12,7 @@ from .context_ui import ContextUI
 from .config import Rejected, digest
 from .protocol import Protocol, TOOLS
 from .transport import run
+from .local import LocalSessions
 
 
 class App:
@@ -23,6 +24,7 @@ class App:
         self.oauth = OAuth(store)
         self.events = Events(store, post)
         self.protocol = Protocol(store, self.events)
+        self.local = LocalSessions(store, self.protocol)
         self.dispatcher = Dispatcher(store, post)
         self.rates = {}
         self.rate_lock = rate_lock if rate_lock is not None else threading.Lock()

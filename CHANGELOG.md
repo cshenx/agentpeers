@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 — local sessions can ask Dot directly
+
+- Optional direct connection from Claude Code and Codex sessions to the owner's existing cloud service; no helper Codex chat or desktop receiving owner is needed.
+- Separate local connector credential and originating-session reply binding. Existing Dot/Grokbot credentials and conversations stay intact.
+- Bounded reply retrieval through MCP tools and CLI, with explicit read receipts and no automatic send retries. Idle or closed local sessions are not automatically woken.
+
 ## 0.8.1 — local connection profiles
 
 - Add optional private connection settings for custom Claude Code/Codex profiles and a shared mailbox when a client filters MCP environment variables. Ordinary installations retain their defaults and existing messages.
