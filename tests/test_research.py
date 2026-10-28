@@ -37,6 +37,7 @@ class ResearchJourney(unittest.TestCase):
     def pair(self):
         result = self.ask()
         self.assertEqual(result['state'], 'approval_required')
+        self.assertEqual(result['launcher_session'], A)
         self.assertFalse(result['submitted'])
         self.assertEqual(self.local('pending',id='handoff-one')['requests'], [])
         self.local('pair',id='handoff-one',pairing_code=result['pairing_code'])

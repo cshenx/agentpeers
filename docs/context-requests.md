@@ -1,10 +1,10 @@
-# Ask Dot from ChatGPT
+# Ask your agents from ChatGPT
 
-Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic it knows. Dot returns a short answer with its sources and observation times. You choose what it may share; the requesting chat gets no access to Dot's inbox or general messaging tools.
+Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic it knows. Dot returns a short answer with its sources and observation times. You choose what it may share; the requesting chat gets no access to Dot's inbox or general messaging tools. A Codex-launched research chat can also ask its exact local launcher factual questions through a [temporary research handoff](#questions-back-to-the-codex-chat-that-launched-research). These are separate permissions: a Dot topic does not grant access to a coding session.
 
 ![ChatGPT and Dot connection](assets/context-requests.svg)
 
-**Cloud source preview · 0.8.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
+**Dot connection · cloud source preview.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
 
 This uses the same AgentPeers service as the [Grokbot ↔ Dot connection](personal-agents.md), with a separate ChatGPT connection and separate permissions. Keep the existing Dot receiver and Grokbot routine. No new model API key, server or scheduled polling job is needed. ChatGPT must support custom MCP apps in the account and model being used; the feature is independent of model choice.
 
@@ -40,8 +40,8 @@ Install the app and select it with `@AgentPeers Context` in the ordinary chat. A
 
 | Tool | Purpose |
 | --- | --- |
-| `context_destinations` | Discover the configured Dot topics and their allowed factual scope. |
-| `request_context` | Submit one stable question after the owner approves this chat and topic. |
+| `context_destinations` | Discover configured Dot topics and how to use a launcher-provided research handoff. |
+| `request_context` | Submit one stable question under this chat’s approved Dot topic or launcher-paired research handoff. |
 | `context_result` | Retrieve that same chat's answer or current state. |
 
 These are separate from the original AgentPeers app, whose connection represents Dot. Use AgentPeers Context for ordinary-chat questions; keep the original app for normal personal-agent messaging.
@@ -112,7 +112,7 @@ For the isolated, network-free developer example, run `python3 scripts/context_d
 
 ## Questions back to the Codex chat that launched research
 
-A local Codex launcher can register a temporary research handoff through the same AgentPeers Context connection. This uses the research chat’s requester identity, never Dot’s identity. Sending a new message to a generic machine peer does not select a coding session and is rejected.
+A local Codex launcher can register a temporary research handoff through the same AgentPeers Context connection. This uses the research chat’s requester identity, never Dot’s identity. Sending a new message to a generic machine peer does not select a coding session and is rejected. For this path, register the launcher first and connect AgentPeers Context at `/mcp/context` if it is not already connected. A Dot topic approval is not required for a research handoff; its permission comes from the launcher’s separate pairing. The local connector and AgentPeers service must already be configured.
 
 1. In the launching Codex chat, call `register_research_handoff` with a new UUID `id`, its display `title`, and the factual `scope` already authorized by the human. Alternatively, run `agentpeers research-register --id UUID --title 'Project lead' --scope 'Project implementation facts only'` from that session. Identity is inferred; do not supply another session’s ID. The returned handoff starts a temporary local relay.
 2. Include the returned handoff ID in the research prompt. Tell research to use **AgentPeers Context**, `request_context` with `destination: "Codex"`, `topic: HANDOFF_ID`, a stable `request_id`, and its factual question.

@@ -4,7 +4,7 @@
 
 # Your agents have different strengths. Let them talk.
 
-Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Bring **Dot’s project context into ordinary ChatGPT chats**. Ask an agent to share its findings, challenge an idea or consult the other—then get the answer back in the conversation you're already using.
+Connect **Grokbot ↔ Dot** and **Claude Code ↔ Codex**. Bring **Dot’s project context into ordinary ChatGPT chats**. Let **Pro research consult the local Codex chat that launched it**. Ask an agent to share its findings, challenge an idea or consult the other—then get the answer back in the conversation you're already using.
 
 **[Connect Grokbot + Dot →](docs/personal-agents.md)**
 

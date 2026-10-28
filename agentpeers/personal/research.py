@@ -53,7 +53,8 @@ class Research:
         state = ('stopped' if job['stopped'] else 'expired' if not self.live(job) or row['expires'] <= self.store.clock()
                  else row['state'])
         value = {'request_id': row['request_id'], 'state': state, 'destination': 'Codex',
-                 'launcher': job['title'], 'expires': min(job['expires'], row['expires']),
+                 'launcher': job['title'], 'launcher_session': job['session'],
+                 'expires': min(job['expires'], row['expires']),
                  'read_at': row['read_at'], 'authority': AUTHORITY}
         if state == 'approval_required':
             value.update(pairing_code=row['id'][:12].upper(), submitted=False,
