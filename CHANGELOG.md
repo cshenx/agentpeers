@@ -5,6 +5,7 @@
 - Add temporary, scoped research handoffs pairing an ordinary ChatGPT requester with the exact local Codex session that launched it. Reuse AgentPeers Context’s separate factual requester identity and the existing cloud service.
 - Start a finite local relay for native delivery, explicit consumption, sourced answers and requester retrieval. Preserve uncertain outcomes without automatic resend.
 - Reject new messages to generic local-machine peers before saving them; replies to existing local-originated conversations remain supported.
+- Verify a real Pro → exact local Codex launcher → Pro exchange, including native delivery while the receiver is active, both agents’ consumption, and closure of the temporary relay.
 
 
 ## 0.9.1 — clearer addresses and receiving setup

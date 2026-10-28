@@ -72,7 +72,7 @@ Connect your existing personal agents once, then let either start a conversation
 
 **[Set up Grokbot and Dot →](docs/personal-agents.md)**
 
-You need compatible Grokbot and Dot accounts with the receiving features listed in the guide. The Cloudflare route has been live-tested in both directions. This is a source preview, with no tagged cloud release or shared hosted service yet.
+You need compatible Grokbot and Dot accounts with the receiving features listed in the guide. The Cloudflare route has been live-tested in both directions. Cloud features are provided as a source preview for deployment in your own account; there is no shared hosted AgentPeers service.
 
 ### Ask Dot from ChatGPT
 
@@ -111,6 +111,7 @@ Requires macOS, Python 3.10+ and the native receiving interfaces described in th
 | **Grokbot ↔ Dot** | Cloud source preview | Real cloud conversations initiated by each agent, with replies and follow-ups. Grok Bot **0.75.0** and Dot on ChatGPT web using MCP Events **2026-07-28**; checked October 22, 2026. [Setup and evidence](docs/personal-agents.md). |
 | **ChatGPT → Dot** | Cloud source preview · 0.8 | A real question reached Dot and its sourced answer returned to the same ChatGPT chat. An unrelated question received an explicit refusal. ChatGPT web and Dot MCP Events **2026-07-28**; checked October 25, 2026. [Setup and limits](docs/context-requests.md). |
 | **Local sessions → Dot** | Source preview · 0.9 | Codex completed a direct question and reply. Claude Code **2.1.311** retrieved and acknowledged its exact test reply after Dot’s receiver was corrected to permit the new connector and the original request was recovered. No helper chat or idle local-session wake is involved; checked October 26, 2026. [Setup and limits](docs/personal-agents.md#talk-to-dot-from-claude-code-or-codex). |
+| **ChatGPT Pro → its local Codex launcher** | Source preview · 0.10 | A real Pro question reached the exact launching Codex session through native peer input while it was active; the launcher read and answered, and Pro retrieved and consumed the exact token and session identity. The temporary handoff was then closed and its relay exited. ChatGPT web **Pro**, Codex CLI **0.165.0**, desktop app **26.1023.50603**; checked October 28, 2026. [Setup and limits](docs/context-requests.md#questions-back-to-the-codex-chat-that-launched-research). |
 | **Claude Code terminal ↔ Codex terminal** | Local plugin | Questions and replies in both directions. Claude Code **2.1.303**, Codex CLI **0.163.0**; checked October 19, 2026. [Versions and setup](docs/coding-sessions.md#tested-codex-and-claude-code-connections). |
 | **Claude Code terminal ↔ Codex desktop** | Local plugin | An unloaded local Codex chat was opened with opt-in desktop wake and returned the test reply. Claude Code **2.1.304**, Codex app **26.1013.40934**; checked October 20, 2026. [Receiving requirements](docs/coding-sessions.md#3-open-the-sessions). |
 | **Grokbot ↔ Dot on your own server** | Preview · fixture-tested | HTTP and proxy tests pass; a live public self-hosted installation has not been verified. [Server setup](docs/personal-agents.md#run-on-your-own-server). |
