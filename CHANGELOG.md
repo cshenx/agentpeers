@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 — research can ask its local Codex launcher
+
+- Add temporary, scoped research handoffs pairing an ordinary ChatGPT requester with the exact local Codex session that launched it. Reuse AgentPeers Context’s separate factual requester identity and the existing cloud service.
+- Start a finite local relay for native delivery, explicit consumption, sourced answers and requester retrieval. Preserve uncertain outcomes without automatic resend.
+- Reject new messages to generic local-machine peers before saving them; replies to existing local-originated conversations remain supported.
+
+
 ## 0.9.1 — clearer addresses and receiving setup
 
 - Reject shortened or invalid `codex:` and `claude:` session IDs before discovery or message creation, with a structured address correction instead of a misleading receiver failure. Full IDs and ordinary session names remain supported.

@@ -13,6 +13,7 @@ from .config import Rejected, digest
 from .protocol import Protocol, TOOLS
 from .transport import run
 from .local import LocalSessions
+from .research import Research
 
 
 class App:
@@ -20,6 +21,7 @@ class App:
         self.store = store
         self.context = store.context = ContextBridge(store)
         self.factual = store.factual = FactualContext(store)
+        self.research = store.research = Research(store)
         self.context_ui = ContextUI(self.factual)
         self.oauth = OAuth(store)
         self.events = Events(store, post)

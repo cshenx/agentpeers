@@ -16,7 +16,7 @@ def prepare_runtime(root):
         if path.is_symlink():
             raise SystemExit('Refusing a symlink in the generated runtime path')
     runtime.mkdir(parents=True, exist_ok=True)
-    modules = ('__init__', 'adapters', 'app', 'auth', 'config', 'context', 'context_bridge', 'context_ui', 'factual', 'endpoint', 'local', 'protocol', 'store', 'transport')
+    modules = ('__init__', 'adapters', 'app', 'auth', 'config', 'context', 'context_bridge', 'context_ui', 'factual', 'endpoint', 'local', 'research', 'protocol', 'store', 'transport')
     allowed = {'worker.py': root / 'cloud/worker.py', 'backend.py': root / 'cloud/backend.py',
                'agentpeers/__init__.py': root / 'agentpeers/__init__.py'}
     allowed.update({'agentpeers/personal/' + name + '.py': root / 'agentpeers/personal' / (name + '.py') for name in modules})

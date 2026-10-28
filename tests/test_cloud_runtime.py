@@ -226,6 +226,42 @@ class CloudRuntime(unittest.TestCase):
         self.assertEqual(self.request('POST','/mcp/context',{'id':1,'method':'tools/list'},requester)[0],401)
         self.assertEqual(self.tool(dot,'list_peers')['self'],'dot')
 
+    def test_research_handoff_oauth_exact_launcher_restart_and_answer(self):
+        session='codex:11111111-1111-4111-8111-111111111111'
+        other='codex:22222222-2222-4222-8222-222222222222'
+        args={'owner_key':'o'*40,'connector':'local-research','name':'Research sessions'}
+        headers={'Content-Type':'application/x-www-form-urlencoded','Origin':'http://127.0.0.1:'+str(self.port)}
+        status,_,config=self.request('POST','/local/connect',urlencode(args),headers=headers)
+        self.assertEqual(status,200,config)
+        def local(name,fields,who=session):
+            return self.request('POST','/v1/local',{'session':who,'tool':'research_'+name,'arguments':fields},config['key'])
+        self.assertEqual(local('register',{'id':'runtime-handoff','scope':'Synthetic research only','title':'Runtime launcher'})[0],200)
+        requester=self.connect_dot('/mcp/context','agentpeers:facts')
+        metadata={'openai/subject':'research-owner','openai/session':'research-chat'}
+        question={'request_id':'runtime-question','destination':'Codex','topic':'runtime-handoff','question':'Echo a synthetic fact'}
+        def context(name,fields,meta=metadata):
+            return self.request('POST','/mcp/context',{'id':1,'method':'tools/call','params':{'name':name,'arguments':fields,'_meta':meta}},requester)
+        pending=context('request_context',question)[2]['result']['structuredContent']
+        self.assertEqual(pending['state'],'approval_required')
+        pair={'id':'runtime-handoff','pairing_code':pending['pairing_code']}
+        self.assertEqual(local('pair',pair,other)[0],400)
+        self.assertEqual(local('pair',pair)[0],200)
+        request=local('pending',{'id':'runtime-handoff'})[2]['requests'][0]['id']
+        fields={'id':'runtime-handoff','request':request}
+        self.assertTrue(local('claim',fields)[2]['claimed'])
+        self.restart_runtime()
+        self.assertEqual(context('context_result',{'request_id':'runtime-question'})[2]['result']['structuredContent']['state'],'unconfirmed')
+        self.assertEqual(local('pending',{'id':'runtime-handoff'})[2]['requests'],[])
+        self.assertEqual(local('read',fields)[0],200)
+        answer={**fields,'answer':'runtime fact','sources':['fixture:research'],'reply_id':'runtime-answer','status':'answered'}
+        self.assertEqual(local('answer',answer,other)[0],400)
+        self.assertEqual(local('answer',answer)[2]['state'],'completed')
+        self.assertEqual(context('context_result',{'request_id':'runtime-question'})[2]['result']['structuredContent']['answer'],'runtime fact')
+        wrong=context('context_result',{'request_id':'runtime-question'},{**metadata,'openai/session':'wrong-chat'})
+        self.assertTrue(wrong[2]['result']['isError'])
+        self.assertEqual(local('close',{'id':'runtime-handoff'})[0],200)
+        self.assertEqual(context('context_result',{'request_id':'runtime-question'})[2]['result']['structuredContent']['state'],'stopped')
+
     def test_missing_subscription_waits_for_a_change_instead_of_polling(self):
         token=self.connect_dot()
         status,_,_=self.request('POST','/v1/call',{'tool':'send_message','arguments':{'to':'Dot','message':'Wait for a receiver','scope':'Fixture','message_id':'wait-sub'}},self.grok);self.assertEqual(status,200)
