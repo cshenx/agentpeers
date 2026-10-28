@@ -42,8 +42,8 @@ CREATE INDEX IF NOT EXISTS ap_facts_grant_chat ON ap_facts_grants(client,subject
 CREATE INDEX IF NOT EXISTS ap_facts_request_grant ON ap_facts_requests(grant_id);
 """
 TOOLS = [
-    tool("context_destinations", "List the owner-configured factual topics available for Dot. This grants no access to answers or inboxes.", readonly=True),
-    tool("request_context", "Ask Dot one factual question within an owner-approved topic. Discover topics first. Use a stable request_id. If approval_required, show the pairing code to the human and stop; nothing was sent. Pending is not delivery or reading. Retrieve explicitly with context_result; never schedule polling or automatically resend uncertain work.",
+    tool("context_destinations", "List owner-configured factual topics and explain exact-launcher research handoffs. This grants no access to answers or inboxes.", readonly=True),
+    tool("request_context", "Ask a factual question to Dot on an approved topic, or to destination Codex with the exact handoff topic supplied by your launcher. Use a stable request_id. If approval_required, show the pairing code; no question has been delivered. A research launcher must verify that code in the intended chat and approve its own handoff. Pending is not reading. Retrieve explicitly with context_result; never schedule polling or automatically resend uncertain work.",
          {k: STRING for k in ("request_id", "destination", "topic", "question")},
          ["request_id", "destination", "topic", "question"]),
     tool("context_result", "Retrieve this authenticated chat's existing factual answer or terminal state. The answer includes receiver-asserted sources and times, not independently verified facts. No background chat wake is promised.",
@@ -85,7 +85,9 @@ class FactualContext:
 
     @locked
     def active(self):
-        return self.available() and bool(self.store.db.execute("SELECT 1 FROM ap_facts_policies WHERE active=1").fetchone())
+        research = getattr(self.store, 'research', None)
+        handoff = research and self.store.db.execute('SELECT 1 FROM ap_research_jobs WHERE stopped=0 AND expires>?', (self.store.clock(),)).fetchone()
+        return self.available() and bool(handoff or self.store.db.execute("SELECT 1 FROM ap_facts_policies WHERE active=1").fetchone())
 
     def connected(self, actor, target):
         return self.available() and {actor, target} == {ORIGIN, "dot"}
@@ -243,12 +245,16 @@ class FactualContext:
         if not definition or not isinstance(args, dict) or set(args) != set(definition["inputSchema"]["required"]) or any(not isinstance(v, str) for v in args.values()):
             raise Rejected("Only the exact factual requester tools and arguments are available")
         s = self.store
+        research = getattr(s, 'research', None)
+        if research and ((name == 'request_context' and args['destination'] == 'Codex') or
+                         (name == 'context_result' and research.has_request(client, metadata, args['request_id']))):
+            return research.call(client, name, args, metadata)
         with s.lock:
             def operation():
                 if not self.token_client_allowed(client):
                     raise Rejected("Requester connection is inactive")
                 if name == "context_destinations":
-                    return {"destinations": [{"destination": "Dot", "topic": p["topic"], "scope": p["scope"], "sources": json.loads(p["refs"])} for p in s.db.execute("SELECT topic,scope,refs FROM ap_facts_policies WHERE active=1 ORDER BY topic")], "authority": AUTHORITY}
+                    return {"destinations": [{"destination": "Dot", "topic": p["topic"], "scope": p["scope"], "sources": json.loads(p["refs"])} for p in s.db.execute("SELECT topic,scope,refs FROM ap_facts_policies WHERE active=1 ORDER BY topic")], "research_handoffs": "Use destination Codex and the exact topic/handoff ID provided by your launcher; the launcher must pair this chat before delivery. No generic machine or Dot identity.", "authority": AUTHORITY}
                 identity = self._identity(client, metadata)
                 identifier(args["request_id"])
                 key = fingerprint([*identity, args["request_id"]])
@@ -377,7 +383,7 @@ class FactualContext:
             if method == "initialize":
                 value = {"protocolVersion": params.get("protocolVersion", "2026-07-28"), "capabilities": {"tools": {}},
                          "serverInfo": {"name": "AgentPeers Context", "version": __version__},
-                         "instructions": AUTHORITY + " Discover factual topics. Show approval_required pairing codes to the human; do not retry until approved. Retrieve a pending answer explicitly. No scheduled polling or chat wake, inbox, general messaging or business actions."}
+                         "instructions": AUTHORITY + " Discover factual topics. For destination Dot show approval_required pairing codes to the human. For destination Codex use only the exact research handoff topic supplied by the launcher, display its pairing code so that launcher can verify and approve it. Do not send as Dot or to a generic machine peer. Retrieve pending answers explicitly. No scheduled polling or ordinary chat wake, inbox, general messaging or business actions."}
             elif method == "tools/list":
                 value = {"tools": TOOLS}
             elif method == "server/discover":

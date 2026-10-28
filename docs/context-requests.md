@@ -1,10 +1,10 @@
-# Ask Dot from ChatGPT
+# Ask your agents from ChatGPT
 
-Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic it knows. Dot returns a short answer with its sources and observation times. You choose what it may share; the requesting chat gets no access to Dot's inbox or general messaging tools.
+Use an ordinary ChatGPT chat to ask your existing Dot about a project or topic it knows. Dot returns a short answer with its sources and observation times. You choose what it may share; the requesting chat gets no access to Dot's inbox or general messaging tools. A Codex-launched research chat can also ask its exact local launcher factual questions through a [temporary research handoff](#questions-back-to-the-codex-chat-that-launched-research). These are separate permissions: a Dot topic does not grant access to a coding session.
 
 ![ChatGPT and Dot connection](assets/context-requests.svg)
 
-**Cloud source preview · 0.8.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
+**Dot connection · cloud source preview.** Live-tested on ChatGPT web with Dot on October 25, 2026: a useful factual question reached Dot, its sourced answer returned to the originating chat, and an unrelated question received an explicit out-of-scope refusal. The native event adapter uses MCP Events 2026-07-28.
 
 This uses the same AgentPeers service as the [Grokbot ↔ Dot connection](personal-agents.md), with a separate ChatGPT connection and separate permissions. Keep the existing Dot receiver and Grokbot routine. No new model API key, server or scheduled polling job is needed. ChatGPT must support custom MCP apps in the account and model being used; the feature is independent of model choice.
 
@@ -40,8 +40,8 @@ Install the app and select it with `@AgentPeers Context` in the ordinary chat. A
 
 | Tool | Purpose |
 | --- | --- |
-| `context_destinations` | Discover the configured Dot topics and their allowed factual scope. |
-| `request_context` | Submit one stable question after the owner approves this chat and topic. |
+| `context_destinations` | Discover configured Dot topics and how to use a launcher-provided research handoff. |
+| `request_context` | Submit one stable question under this chat’s approved Dot topic or launcher-paired research handoff. |
 | `context_result` | Retrieve that same chat's answer or current state. |
 
 These are separate from the original AgentPeers app, whose connection represents Dot. Use AgentPeers Context for ordinary-chat questions; keep the original app for normal personal-agent messaging.
@@ -108,3 +108,20 @@ The additive `ap_facts_*` tables are separate from the original personal message
 Named Codex delivery requires a separate owner-approved local connector, exact native session and factual scope. The local contract has a named Codex fixture; there is no live cloud-to-Codex context adapter. Do not expose native sockets or silently route a question to a replacement session.
 
 For the isolated, network-free developer example, run `python3 scripts/context_demo.py`. It uses synthetic receivers and a separate temporary database; it does not establish or enable a real connection.
+
+
+## Questions back to the Codex chat that launched research
+
+A local Codex launcher can register a temporary research handoff through the same AgentPeers Context connection. This uses the research chat’s requester identity, never Dot’s identity. Sending a new message to a generic machine peer does not select a coding session and is rejected. For this path, register the launcher first and connect AgentPeers Context at `/mcp/context` if it is not already connected. A Dot topic approval is not required for a research handoff; its permission comes from the launcher’s separate pairing. The local connector and AgentPeers service must already be configured.
+
+1. In the launching Codex chat, call `register_research_handoff` with a new UUID `id`, its display `title`, and the factual `scope` already authorized by the human. Alternatively, run `agentpeers research-register --id UUID --title 'Project lead' --scope 'Project implementation facts only'` from that session. Identity is inferred; do not supply another session’s ID. The returned handoff starts a temporary local relay.
+2. Include the returned handoff ID in the research prompt. Tell research to use **AgentPeers Context**, `request_context` with `destination: "Codex"`, `topic: HANDOFF_ID`, a stable `request_id`, and its factual question.
+3. On the first question, the research chat displays a pairing code. The relay notifies the exact launcher. The launcher checks the code in the actual research chat it opened and calls `pair_research_chat` (or `agentpeers research-pair --handoff HANDOFF_ID --code CODE`). It must not approve a code from an unrelated conversation. Pairing cannot replace an existing requester.
+4. The relay delivers the actual question as native peer tool output to that exact local Codex session. The launcher consumes it, calls `read_research_question`, and returns an answer or refusal through `answer_research_question`, with actual source references and a stable reply ID. These are factual questions, not permission to implement or publish anything.
+5. Research explicitly calls `context_result` with the same `request_id` to retrieve the answer. The source chat must consume the result before calling the exchange complete. Close the handoff with `close_research_handoff` when research is finished.
+
+The optional CLI receiver operations are `research-read` and `research-answer`; their `--help` shows the exact arguments. `research-deliver` checks one handoff once; `research-relay` runs its finite receiving loop. Registration starts the relay automatically. A lock prevents duplicate relay processes for one handoff. Pairing notices and questions each have a stable, distinct native message ID. The cloud claims a delivery before native submission and never automatically resends an uncertain or interrupted submission.
+
+A handoff lasts at most four hours and accepts at most 20 questions, each with a fixed ten-minute deadline. Closing it stops further eligibility and preserves evidence. The Mac and its compatible local Codex receiver must be available; this does not deliver to cloud-hosted Codex chats or wake a Mac. The relay is a temporary Python process using outbound HTTPS and the existing local receiving adapter, not an inbound public port or a new hosted service. Logs and locks stay beside the private connector configuration; message bodies are not written to relay logs. Stopped, expired, unavailable and unconfirmed states remain visible.
+
+This connection returns answers when research retrieves them; it does not automatically wake an ordinary ChatGPT chat after its turn has ended. Launcher authority is limited to its own session and existing human-approved factual assignment. The owner’s OAuth approval and launcher pairing are separate permissions. As with other context requests, OpenAI correlation labels are used for chat binding; they are not a cryptographic attestation of a native chat ID. Processes running as the same trusted OS account share local connector access.

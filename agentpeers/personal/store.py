@@ -103,7 +103,7 @@ class Store:
                 receiving = ADAPTERS[peer["platform"]].receiving
                 result.append({"id": pid, "name": peer["name"], "platform": peer["platform"],
                                "receiving": "subscription_active" if subscribed else "subscription_needed" if receiving == "event_subscription" else receiving,
-                               "note": "Receiving configuration is not proof the agent is available or has read a message."})
+                               "note": "Replies to local-session-originated conversations only. For a new question use a paired research handoff to one exact launcher; this machine peer cannot receive new conversations." if peer['platform'] == 'local' else "Receiving configuration is not proof the agent is available or has read a message."})
             return result
 
     def _message(self, mid):
@@ -141,6 +141,8 @@ class Store:
             raise Rejected("expects must be none or reply")
         with self.lock:
             target = self.resolve(actor, to)
+            if self.config['peers'].get(target, {}).get('platform') == 'local' and not reply_to:
+                raise Rejected('A local connector is not an individual session. New messages require a paired research handoff; only replies to session-originated conversations can use this peer. Nothing was sent.')
             original = self._message(reply_to) if reply_to else None
             if original:
                 self._allowed(actor, original)

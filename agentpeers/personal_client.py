@@ -154,6 +154,6 @@ def call(session, tool, args, wait_seconds=0):
         while not result.get('replies') and result.get('state') not in ('blocked', 'expired', 'unknown', 'stopped') and time.monotonic() < deadline:
             time.sleep(min(2, max(0, deadline - time.monotonic())))
             result = request('message_status', {'message_id': result['id']})
-    result['route'] = 'direct-personal-agent'
-    result['receipt_note'] = 'Reply content is retrieved directly into this originating session. Only acknowledge after consuming it. No desktop helper chat is involved.'
+    result['route'] = 'session-bound-research' if tool.startswith('research_') else 'direct-personal-agent'
+    result['receipt_note'] = ('Registration and relay submission do not prove receipt; the exact launcher must consume the question and the research chat must retrieve its answer.' if tool.startswith('research_') else 'Reply content is retrieved directly into this originating session. Only acknowledge after consuming it. No desktop helper chat is involved.')
     return result

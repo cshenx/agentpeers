@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentpeers"
-version = "0.9.1"
+version = "0.10.0"
 description = "Peer messaging between your existing AI agents across platforms."
 requires-python = ">=3.10"
 dependencies = []

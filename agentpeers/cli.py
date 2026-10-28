@@ -18,6 +18,21 @@ def main():
                                      epilog="Local session commands connect Claude Code and Codex on one Mac. Use agentpeers personal --help for the separate Grokbot and Dot connection service.")
     parser.add_argument("--from", dest="actor", help="own session address; normally inferred")
     sub = parser.add_subparsers(dest="command", required=True)
+    research = sub.add_parser('research-register', help='register this exact Codex session as a factual research launcher')
+    research.add_argument('--id', required=True)
+    research.add_argument('--scope', required=True)
+    research.add_argument('--title', required=True)
+    for action in ('pair', 'pending', 'close', 'deliver', 'relay', 'read', 'answer'):
+        command = sub.add_parser('research-' + action, help='control this session’s research handoff')
+        command.add_argument('--handoff', required=True)
+        if action == 'pair': command.add_argument('--code', required=True)
+        if action in ('read', 'answer'): command.add_argument('--request', required=True)
+        if action == 'relay': command.add_argument('--seconds', type=int, default=14400)
+        if action == 'answer':
+            command.add_argument('--answer-file', required=True)
+            command.add_argument('--source', action='append', default=[])
+            command.add_argument('--status', choices=['answered', 'unavailable', 'out_of_scope'], default='answered')
+            command.add_argument('--reply-id', required=True)
     direct = sub.add_parser('connect-dot', help='connect this OS account directly to Dot through your existing AgentPeers service')
     direct.add_argument('--url', required=True)
     direct.add_argument('--connector', required=True, help='unique local- ID for this machine/profile')
@@ -95,6 +110,22 @@ def main():
             connection()  # Validate explicit connection settings before any native action.
         if args.command == "connection":
             pass
+        elif args.command.startswith('research-'):
+            from . import research_client
+            actor = resolve_actor(args.actor)
+            action = args.command.removeprefix('research-')
+            fields = {'id': getattr(args, 'handoff', None)}
+            if action == 'register': fields = {'id': args.id, 'scope': args.scope, 'title': args.title}
+            if action == 'pair': fields['pairing_code'] = args.code
+            if action in ('read', 'answer'): fields['request'] = args.request
+            if action == 'answer': fields.update(answer=Path(args.answer_file).read_text(encoding='utf-8'), sources=args.source, status=args.status, reply_id=args.reply_id)
+            if action == 'deliver': output = research_client.deliver_once(actor, args.handoff)
+            elif action == 'relay':
+                research_client.relay(actor, args.handoff, seconds=args.seconds)
+                return
+            else:
+                output = research_client.call(actor, action, fields)
+                if action == 'register': output['relay'] = research_client.start(actor, fields['id'])
         elif args.command == 'connect-dot':
             output = personal_client.connect(args.url, args.connector, args.name)
         elif args.command.startswith('personal-'):

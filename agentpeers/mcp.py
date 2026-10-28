@@ -11,12 +11,23 @@ from .addressing import validate_destination
 # Load owned modules at startup so later setup calls never import deleted files.
 from .setup import doctor, start_probe, verify_probe
 from . import personal_client
+from . import research_client
 
 OPTIONS = {"expects": {"type": "string", "enum": ["none", "ack", "reply"]},
            "summary": {"type": "string", "maxLength": 300},
            "record_ref": {"type": "string", "maxLength": 2000}}
 
 TOOLS = [
+    ('register_research_handoff', 'Register only this exact local Codex caller for human-authorized factual questions from research. Provide the returned topic to the research chat; pairing is required before delivery. Does not grant business-action authority.',
+     {k: {'type': 'string'} for k in ('id', 'scope', 'title', 'sender')}, ['id', 'scope', 'title']),
+    ('pair_research_chat', 'Pair this launcher’s handoff using the code read from the intended research chat. Never approve a code from an unrelated chat or replace a paired requester.',
+     {k: {'type': 'string'} for k in ('id', 'pairing_code', 'sender')}, ['id', 'pairing_code']),
+    ('read_research_question', 'Only this originating launcher may record actual consumption of its delivered research question. Never acknowledge unread content.',
+     {k: {'type': 'string'} for k in ('id', 'request', 'sender')}, ['id', 'request']),
+    ('answer_research_question', 'Return a factual answer or refusal to this paired research chat. Consume and acknowledge the question first. Sources is a JSON array of actual source references; use a stable reply_id. No new actions are authorized.',
+     {k: {'type': 'string'} for k in ('id', 'request', 'answer', 'sources', 'reply_id', 'status', 'sender')}, ['id', 'request', 'answer', 'sources', 'reply_id', 'status']),
+    ('close_research_handoff', 'Stop this exact launcher’s temporary handoff and relay eligibility; preserve all evidence.',
+     {k: {'type': 'string'} for k in ('id', 'sender')}, ['id']),
     ("list_personal_peers", "Discover directly connected personal agents such as Dot. These use the cloud service, not a helper Codex chat. Does not send messages.",
      {"sender": {"type": "string"}}, []),
     ("personal_inbox", "Recover this session's existing personal-agent conversations and replies after an interrupted send. Does not resend or acknowledge; other local sessions are excluded.",
@@ -110,6 +121,16 @@ def validate_arguments(name, args):
 
 def dispatch(name, args, actor=None):
     validate_arguments(name, args)
+    if name in ('register_research_handoff', 'pair_research_chat', 'read_research_question', 'answer_research_question', 'close_research_handoff'):
+        if actor is not None and args.get('sender') not in (None, actor):
+            raise ValueError("sender differs from the MCP server's bound session")
+        sender = resolve_actor(args.get('sender'), observed=actor)
+        fields = {k: v for k, v in args.items() if k != 'sender'}
+        if name == 'answer_research_question': fields['sources'] = json.loads(fields['sources'])
+        action = {'register_research_handoff': 'register', 'pair_research_chat': 'pair', 'read_research_question': 'read', 'answer_research_question': 'answer', 'close_research_handoff': 'close'}[name]
+        result = research_client.call(sender, action, fields)
+        if action == 'register': result['relay'] = research_client.start(sender, fields['id'])
+        return result
     if name in ('list_personal_peers', 'personal_inbox', 'send_personal_message', 'personal_message_status',
                 'reply_personal_message', 'acknowledge_personal_message'):
         if actor is not None and args.get('sender') not in (None, actor):

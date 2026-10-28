@@ -49,6 +49,8 @@ class LocalSessions:
         if not isinstance(args, dict):
             raise Rejected("Arguments must be an object")
         with s.lock:
+            if name.startswith('research_'):
+                return s.research.local(connector, session, name, args)
             if name == 'inbox':
                 if args:
                     raise Rejected('inbox takes no arguments')

@@ -227,7 +227,7 @@ Cloud deployment uses its own SQLite-backed Durable Object. Self-hosting uses a 
 
 Use the separate [ChatGPT → Dot context connection](context-requests.md) for owner-approved factual questions from an ordinary ChatGPT chat. It uses this existing service and Dot receiver, with separate requester credentials and per-chat topic permissions. The normal AgentPeers app represents Dot; it must not be reused as the ordinary chat's identity.
 
-The factual connection was live-tested on October 25, 2026: an approved question returned a sourced answer to its originating ChatGPT chat, and an unrelated question was refused. Questions to named Codex sessions are not supported by this connection.
+The factual connection was live-tested on October 25, 2026: an approved question returned a sourced answer to its originating ChatGPT chat, and an unrelated question was refused. General named Codex routing is not supported. For factual questions back to an exact local launcher, use the temporary paired [research handoff](context-requests.md#questions-back-to-the-codex-chat-that-launched-research).
 
 ## References
 
