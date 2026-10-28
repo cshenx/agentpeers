@@ -91,6 +91,26 @@ class ResearchJourney(unittest.TestCase):
         reply=self.store.send('dot','local-test','answer',reply_to=question['id'],message_id='local-answer',expects='none')
         self.assertEqual(reply['state'],'available')
 
+    def test_pairing_notice_is_once_and_distinct_from_question_submission(self):
+        self.ask()
+        def control(actor,name,args):return self.local(name,actor=actor,**args)
+        with patch.object(research_client,'call',side_effect=control),patch.object(native,'send_codex',return_value={'transport':'fixture'}) as send:
+            research_client.deliver_once(A,'handoff-one')
+            research_client.deliver_once(A,'handoff-one')
+            self.assertEqual(send.call_count,1)
+            first=send.call_args.args[1]['id']
+            self.local('pair',id='handoff-one',pairing_code=self.ask()['pairing_code'])
+            research_client.deliver_once(A,'handoff-one')
+            self.assertEqual(send.call_count,2)
+            self.assertNotEqual(first,send.call_args.args[1]['id'])
+            self.assertIn('request',send.call_args.args[1])
+
+    def test_revoked_requester_stops_local_delivery_without_retargeting(self):
+        self.pair()
+        self.store.factual.revoke_client('test-client')
+        with self.assertRaisesRegex(Rejected,'revoked'):
+            self.local('pending',id='handoff-one')
+
     def test_native_submit_is_claimed_once_and_uncertainty_is_not_retried(self):
         self.pair()
         def control(actor,name,args):return self.local(name,actor=actor,**args)

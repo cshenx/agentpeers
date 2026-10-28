@@ -132,6 +132,8 @@ class Research:
                     return {'id': job['id'], 'state': 'stopped', 'evidence_preserved': True}
                 if not self.live(job):
                     raise Rejected('Research handoff stopped or expired')
+                if job['requester'] and not s.factual.token_client_allowed(json.loads(job['requester'])[0]):
+                    raise Rejected('Paired research requester access was revoked')
                 if name == 'research_pair' and set(args) == {'id', 'pairing_code'}:
                     code = bounded(args['pairing_code'], 'pairing code', 12).upper()
                     rows = s.db.execute("SELECT * FROM ap_research_requests WHERE job=? AND substr(upper(id),1,12)=? AND expires>?",
@@ -139,6 +141,8 @@ class Research:
                     if len(rows) != 1:
                         raise Rejected('No unique active pairing matches this handoff and code')
                     row = rows[0]
+                    if not s.factual.token_client_allowed(json.loads(row['identity'])[0]):
+                        raise Rejected('Research requester access was revoked')
                     if job['requester'] not in (None, row['identity']):
                         raise Rejected('Handoff already paired; never replace its requester')
                     s.db.execute('UPDATE ap_research_jobs SET requester=? WHERE id=?', (row['identity'], job['id']))
