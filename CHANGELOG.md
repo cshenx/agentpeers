@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 — wake a Codex chat in ChatGPT.app
+
+- Opt-in per chat: `agentpeers wake on|off <chat>`, `agentpeers wake off --all`, `agentpeers wake status`. Only the person in a terminal, or the chat itself, can turn it on; the command refuses inside a Claude Code session or another Codex chat. Who turned it on or off, and when, is recorded. `AGENTPEERS_WAKE=off` overrides everything, including desktop wake.
+- A send to a Codex chat with wake on and no live route stores the message as before, then queues one constant wake signal with the Codex CLI bundled in the app (`codex queue --thread <id>`) and opens `codex://threads/wake/<id>` in the background. The receipt says `saved unread; wake queued`, never delivered. A failed or uncertain wake is recorded and never retried. Live routes keep priority.
+- The wake text is one constant pinned byte for byte by a test. No sender, body, summary or scope ever goes into it; the message is read only through the inbox tool.
+- Coalescing: no new wake while an earlier one for that chat has not yet collected its mailbox (no inbox read since, and some covered message still unread; at most one hour).
+- `inbox --unread` (MCP `unread: true`). Every inbox and acknowledge row now carries the same authority note as a live envelope.
+- `list_sessions` and `list` show wake on or off for each Codex chat. Setup reports it, and the docs and skill disclose what the chat shows: a user-looking message from AgentPeers, the chat's reply and a turn-complete notification.
+
 ## 0.10.1 — Codex desktop inside ChatGPT.app
 
 - Codex desktop 26.1117.31558 moved into ChatGPT.app (same bundle, `com.openai.codex`). The inspected build ships no desktop IPC router, and its leftover socket refuses connections. On that build a refused or missing socket now fails with `desktop_ipc_unsupported`: the observed connection error, the app and version, and the statement that live delivery was not attempted. A saved message is reported as unread in the recipient's mailbox. A newer build with the same failure keeps `desktop_connection_unavailable` and says its IPC is unverified.

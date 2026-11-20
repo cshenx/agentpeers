@@ -5,6 +5,7 @@ from pathlib import Path
 import platform
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -130,6 +131,14 @@ def doctor(actor=None):
     except (OSError, ValueError) as exc:
         add("desktop_wake", "fail", "Could not read desktop wake policy: " + str(exc))
         wake = {"enabled": False}
+    from . import codex_wake
+    try:
+        chats = codex_wake.chats_on()
+        add("codex_wake", "pass", ("AGENTPEERS_WAKE=off: wake is off for every chat. " if codex_wake.overridden() else
+            "On for " + str(len(chats)) + " Codex chat(s): " + ", ".join(chats) + ". " if chats else
+            "Off for every chat. ") + codex_wake.DISCLOSURE)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        add("codex_wake", "fail", "Could not read wake settings: " + str(exc))
     desktop_ready = False
     desktop_connected = False
     wake_candidate = False

@@ -8,6 +8,7 @@ from .addressing import name_for
 from . import native
 from .config import connection, configure_connection
 from . import personal_client
+from . import codex_wake
 
 
 def main():
@@ -69,6 +70,11 @@ def main():
         configure.add_argument("--" + field, required=True)
     waking = sub.add_parser("desktop-wake", help="opt in to opening unloaded destination chats in Codex desktop")
     waking.add_argument("mode", choices=["enable", "disable", "status"], default="status", nargs="?")
+    wake = sub.add_parser("wake", help="turn AgentPeers wake signals on or off for a Codex chat (off by default)",
+                          description=codex_wake.DISCLOSURE)
+    wake.add_argument("mode", choices=["on", "off", "status"])
+    wake.add_argument("chat", nargs="?", help="codex:<full chat id>")
+    wake.add_argument("--all", action="store_true", help="with off: turn wake off for every chat")
     checking = sub.add_parser("doctor", help="check local plugin dependencies and registrations without sending")
     checking.add_argument("--probe", help="verify an earlier setup challenge after reading its reply")
     sending = sub.add_parser("send", help="send a message to a local peer session")
@@ -93,7 +99,8 @@ def main():
     question_source = asking.add_mutually_exclusive_group(required=True)
     question_source.add_argument("--message")
     question_source.add_argument("--message-file")
-    sub.add_parser("inbox", help="inspect this local session mailbox")
+    sub.add_parser("inbox", help="inspect this local session mailbox").add_argument(
+        "--unread", action="store_true", help="only messages not yet acknowledged")
     for command, help_text in [("ack", "acknowledge consuming a local message"),
                                ("status", "inspect an existing local message")]:
         sub.add_parser(command, help=help_text).add_argument("id")
@@ -148,6 +155,22 @@ def main():
         elif args.command == "desktop-wake":
             from .desktop_wake import policy
             output = policy(None if args.mode == "status" else args.mode == "enable")
+        elif args.command == "wake":
+            if args.all and args.mode != "off":
+                raise ValueError("--all applies only to wake off")
+            if args.mode in ("on", "off") and bool(args.chat) == bool(args.all):
+                raise ValueError("name one chat as codex:<full chat id>" + (" or use --all" if args.mode == "off" else ""))
+            with Bridge() as bridge:
+                if args.mode == "on":
+                    output = codex_wake.turn_on(bridge.db, args.chat, codex_wake.caller())
+                elif args.mode == "off":
+                    try:
+                        who = codex_wake.caller()
+                    except ValueError:
+                        who = "unidentified caller"
+                    output = codex_wake.turn_off(bridge.db, args.chat, who, everything=args.all)
+                else:
+                    output = codex_wake.status(bridge.db, codex_wake.chat_id(args.chat) if args.chat else None)
         elif args.command == "list":
             result, errors = [], []
             for runtime, discover in [("claude", native.claude_sessions), ("codex", native.codex_sessions)]:
@@ -156,7 +179,7 @@ def main():
                         result.extend(discover())
                     except Exception as exc:
                         errors.append({"runtime": runtime, "error": str(exc)})
-            output = {"sessions": result, "errors": errors}
+            output = {"sessions": codex_wake.annotate(result), "errors": errors}
         elif args.command == "whoami":
             actor = resolve_actor(args.actor)
             output = {"session": actor, "name": name_for(actor)}
@@ -190,7 +213,7 @@ def main():
             elif args.command == "reply":
                 output = bridge.reply(args.id, actor, args.message, **options)
             elif args.command == "inbox":
-                output = bridge.inbox(actor)
+                output = bridge.inbox(actor, unread=args.unread)
             elif args.command == "ack":
                 output = bridge.ack(args.id, actor)
             elif args.command == "ask-dispatcher":
