@@ -50,12 +50,7 @@ RECEIPTS = {"queueing": "saved unread; wake not yet confirmed", "queued": "saved
             "link_failed": "saved unread; wake queued but the app link failed, not retried",
             "failed": "saved unread; wake failed, not retried",
             "refused_owner": "saved unread; not woken: a separate process owns this chat",
-            "refused_uncertain": "saved unread; not woken: who owns this chat could not be verified",
-            "blocked_after_queue": "saved unread; wake queued but the app link was not opened: "
-                                   "a separate process took or may hold this chat, not retried"}
-# One inbox read returns every unread message up to this many. A read that
-# leaves any unread message out does not count as collecting the mailbox.
-UNREAD_LIMIT = 500
+            "refused_uncertain": "saved unread; not woken: who owns this chat could not be verified"}
 
 
 def overridden():
@@ -272,9 +267,12 @@ def ownership(ident):
 
     Two independent views: processes holding the chat's rollout file (lsof),
     and processes naming the chat on their command line (a terminal resume).
-    Each one must be the desktop app's own process. Codex offers no lock, so
-    this is checked before queueing and again just before opening the link;
-    a process that takes the chat in between cannot be excluded.
+    Each one must be the desktop app's own process. This is the only gate and
+    it runs immediately before the queue: once a signal is queued, any process
+    that has the chat loaded may run it, so nothing checked afterwards could
+    protect a chat. Codex offers no lock an outside tool can hold, so a process
+    that starts and loads the chat between this check and the queue call is
+    not excluded; the receipt records both times so that gap is measurable.
     """
     app = native.codex_desktop_app()
     if not app:
@@ -318,17 +316,22 @@ def ownership(ident):
 
 
 def run_wake(chat):
-    """Queue WAKE_TEXT for the chat, then open the wake link. Exactly one attempt of each; never retried."""
+    """Check ownership, queue WAKE_TEXT, open the wake link. Exactly one attempt of each; never retried.
+
+    Every refusal happens before the queue. Nothing runs between the queue and
+    the link: the queued signal is already runnable by whatever holds the chat,
+    so a later check could only hide that, never prevent it.
+    """
     ident = chat.split(":", 1)[1]
     detail = {"queue_attempted": False, "link_attempted": False}
     if platform.system() != "Darwin":
         return "failed", {**detail, "reason": "wake requires macOS"}
+    binary = queue_binary()
     try:
-        detail["owner_before_queue"] = ownership(ident)
+        detail["owner"] = ownership(ident)
     except NotWoken as exc:
         return exc.state, {**detail, "reason": str(exc)}
-    binary = queue_binary()
-    detail.update(queue_attempted=True, codex=binary)
+    detail.update(owner_checked_at=time.time(), queue_attempted=True, codex=binary)
     try:
         result = subprocess.run([binary, "queue", "--thread", ident, "--message", WAKE_TEXT],
                                 capture_output=True, text=True, timeout=20, env=connection_env())
@@ -336,6 +339,7 @@ def run_wake(chat):
         return "failed", {**detail, "reason": "Codex CLI not found: " + str(exc)}
     except (OSError, subprocess.SubprocessError) as exc:
         return "uncertain", {**detail, "reason": "codex queue outcome unknown: " + str(exc)}
+    detail["queue_returned_at"] = time.time()
     output = ((result.stdout or "") + (result.stderr or "")).strip()[:500]
     detail["queue_output"] = output
     if result.returncode:
@@ -343,12 +347,7 @@ def run_wake(chat):
     found = QUEUED.search(result.stdout or "")
     if not found:
         return "uncertain", {**detail, "reason": "codex queue exited 0 without confirming a queued message"}
-    detail["queued_message"] = found.group(1)
-    try:
-        detail["owner_before_link"] = ownership(ident)
-    except NotWoken as exc:
-        return "blocked_after_queue", {**detail, "reason": str(exc)}
-    detail["link_attempted"] = True
+    detail.update(queued_message=found.group(1), link_attempted=True)
     try:
         opened = subprocess.run(["/usr/bin/open", "-g", "codex://threads/wake/" + ident],
                                 capture_output=True, timeout=10)

@@ -440,24 +440,48 @@ class Ownership(Base):
         archived.write_text("{}\n")
         self.refused("refused_uncertain", "archived")
 
-    def test_refusal_queues_nothing_and_a_late_owner_blocks_the_link(self):
+    def test_every_refusal_comes_before_the_queue(self):
         codex_wake.turn_on(self.bridge.db, C, None)
-        fake = Fake()
-        with patch.object(codex_wake, "ownership", side_effect=codex_wake.NotWoken("refused_owner", "terminal")):
-            message = self.send(fake)
-        self.assertEqual(fake.calls, [])
-        self.assertEqual(message["receipt"], "saved unread; not woken: a separate process owns this chat")
-        self.assertNotIn("wake queued", message["delivery_note"])
-        fake = Fake()
-        with patch.object(codex_wake, "ownership", side_effect=[{"app": APP}, codex_wake.NotWoken("refused_owner", "late")]):
-            message = self.send(fake)
-        self.assertEqual(fake.calls, [self.queue_argv()])
-        self.assertEqual(message["wake"]["state"], "blocked_after_queue")
-        self.assertIn("app link was not opened", message["receipt"])
-        fake = Fake()
-        with patch.object(codex_wake, "ownership", side_effect=codex_wake.NotWoken("refused_uncertain", "doubt")):
-            self.assertIn("could not be verified", self.send(fake)["receipt"])
-        self.assertEqual(fake.calls, [])
+        for state, receipt in (("refused_owner", "not woken: a separate process owns this chat"),
+                               ("refused_uncertain", "not woken: who owns this chat could not be verified")):
+            fake = Fake()
+            with patch.object(codex_wake, "ownership", side_effect=codex_wake.NotWoken(state, "fixture")):
+                message = self.send(fake)
+            self.assertEqual(fake.calls, [])  # Nothing queued, no link.
+            self.assertEqual(message["receipt"], "saved unread; " + receipt)
+            self.assertFalse(message["wake"]["detail"]["queue_attempted"])
+            self.assertNotIn("wake queued", message["delivery_note"])
+
+    def test_no_check_after_the_queue_can_claim_to_protect_the_chat(self):
+        """The queued signal may run at once (the app consumes it before any link), so ownership is checked
+        exactly once, before the queue, and nothing sits between the queue and the link."""
+        codex_wake.turn_on(self.bridge.db, C, None)
+        events, fake = [], Fake()
+
+        def owner(ident):
+            events.append("ownership")
+            if len(events) > 1:  # A separate owner appears once the signal is queued.
+                raise codex_wake.NotWoken("refused_owner", "late terminal")
+            return {"app": APP}
+
+        def run(argv, **kwargs):
+            events.append(argv[1] if argv[0] == "/fixture/codex" else argv[0])
+            return fake(argv, **kwargs)
+
+        with patch.object(codex_wake, "ownership", side_effect=owner), \
+             patch.object(codex_wake.subprocess, "run", side_effect=run):
+            message = self.bridge.send(A, C, "fixture body", "test only", expects="ack")
+        self.assertEqual(events, ["ownership", "queue", "/usr/bin/open"])
+        self.assertEqual(fake.calls, [self.queue_argv(), self.open_argv()])
+        self.assertEqual(message["wake"]["state"], "queued")
+        detail = message["wake"]["detail"]
+        self.assertLessEqual(detail["owner_checked_at"], detail["queue_returned_at"])
+        self.assertNotIn("owner_before_link", detail)
+        self.assertNotIn("blocked_after_queue", codex_wake.RECEIPTS)
+        source = Path(codex_wake.__file__).read_text()
+        body = source[source.index("def run_wake"):source.index("def after_unavailable")]
+        self.assertEqual(body.count("ownership("), 1)
+        self.assertLess(body.index("ownership("), body.index('"queue", "--thread"'))
 
 
 class Concurrency(Base):
@@ -551,26 +575,30 @@ class Concurrency(Base):
 
 
 class Inbox(Base):
-    def test_one_read_returns_every_unread_message_or_does_not_count(self):
+    def test_one_read_returns_every_unread_message_with_no_cap(self):
         with patch.object(codex_wake.subprocess, "run", side_effect=Fake()):
             for n in range(130):
                 self.bridge.send(A, C, "bulk %d" % n, "test only", expects="none")
         rows = self.bridge.inbox(C)
         self.assertEqual(len(rows), 130)  # Not cut at 100 while any is unread.
         self.assertIsNotNone(self.bridge.db.execute("SELECT 1 FROM inbox_reads WHERE chat=?", (C,)).fetchone())
-        codex_wake.turn_on(self.bridge.db, C, None)
-        self.bridge.db.execute("DELETE FROM inbox_reads")
-        self.bridge.db.commit()
-        fake = Fake()
-        first = self.send(fake, "after")
-        with patch.object(codex_wake, "UNREAD_LIMIT", 100):
-            self.assertEqual(len(self.bridge.inbox(C, unread=True)), 100)
-        self.assertIsNone(self.bridge.db.execute("SELECT 1 FROM inbox_reads WHERE chat=?", (C,)).fetchone())
-        second = self.send(fake, "later")
-        self.assertEqual(second["wake"]["id"], first["wake"]["id"])  # An incomplete read did not end the wake.
-        self.bridge.inbox(C, unread=True)
-        self.assertNotEqual(self.send(fake, "last")["wake"]["id"], first["wake"]["id"])
 
+    def test_more_than_500_unread_drain_in_one_read_without_a_new_message(self):
+        codex_wake.turn_on(self.bridge.db, C, None)
+        fake = Fake()
+        first = self.send(fake, "first")
+        with patch.object(codex_wake.subprocess, "run", side_effect=fake):
+            for n in range(700):
+                self.bridge.send(A, C, "bulk %d" % n, "test only", expects="none")
+        self.assertEqual(fake.calls, [self.queue_argv(), self.open_argv()])  # One wake covers all 701.
+        rows = self.bridge.inbox(C, unread=True)
+        self.assertEqual(len(rows), 701)
+        self.assertEqual({row["body"] for row in rows}, {"first"} | {"bulk %d" % n for n in range(700)})
+        for row in rows:
+            self.bridge.ack(row["id"], C)
+        self.assertEqual(self.bridge.inbox(C, unread=True), [])  # Drained; nothing waits for another message.
+        self.assertEqual(len(fake.calls), 2)
+        self.assertNotEqual(self.send(fake, "next")["wake"]["id"], first["wake"]["id"])  # The read ended the wake.
 
     def test_unread_filter_and_authority_on_every_row(self):
         fake = Fake()

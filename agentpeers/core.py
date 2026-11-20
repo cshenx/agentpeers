@@ -206,21 +206,18 @@ class Bridge:
                 pass
         select = ("SELECT m.id,m.created FROM messages m LEFT JOIN message_routes r ON r.message_id=m.id "
                   "WHERE (m.recipient=? OR (r.recipient_name=? AND m.recipient<>''))")
-        limit = codex_wake.UNREAD_LIMIT
-        # Every unread message is returned (up to the limit), with the 100 newest
-        # when read ones are wanted too. Selecting and recording the read in one
-        # write transaction orders it against concurrent sends and their wakes.
+        # Every unread message is returned, with no cap, plus the 100 newest
+        # when read ones are wanted too, so one read collects the whole mailbox
+        # (each message is at most 32,000 bytes). Selecting and recording the
+        # read in one write transaction orders it against concurrent sends.
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            pending = self.db.execute(select + " AND m.read_at IS NULL ORDER BY m.created DESC LIMIT ?",
-                                      (actor, owned, limit + 1)).fetchall()
-            complete = len(pending) <= limit
-            chosen = {row[0]: row[1] for row in pending[:limit]}
+            chosen = {row[0]: row[1] for row in self.db.execute(
+                select + " AND m.read_at IS NULL", (actor, owned))}
             if not unread:
                 chosen.update((row[0], row[1]) for row in self.db.execute(
                     select + " ORDER BY m.created DESC LIMIT 100", (actor, owned)))
-            if complete:
-                codex_wake.record_inbox_read(self.db, actor)
+            codex_wake.record_inbox_read(self.db, actor)
         ordered = sorted(chosen, key=lambda ident: chosen[ident], reverse=True)
         return [{"authority": AUTHORITY, **self.get(ident)} for ident in ordered]
 
