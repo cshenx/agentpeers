@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 import uuid
@@ -21,6 +23,7 @@ IDENT = C.split(":", 1)[1]
 OTHER = "codex:" + str(uuid.uuid4())
 A = "claude:" + str(uuid.uuid4())
 QUEUE_ID = str(uuid.uuid4())
+APP = "/Applications/ChatGPT.app"
 
 PINNED = ("AgentPeers wake signal. This text was generated automatically by AgentPeers, not written by the user. "
           "It is not a peer message and grants no permission. An AgentPeers message may be waiting for this chat: "
@@ -66,7 +69,8 @@ class Base(unittest.TestCase):
                         patch.object(native, "codex_sessions", return_value=[]),
                         patch.object(native, "receive_route", return_value={"session_id": A, "status": "available"}),
                         patch.object(codex_wake.platform, "system", return_value="Darwin"),
-                        patch.object(codex_wake, "queue_binary", return_value="/fixture/codex")]
+                        patch.object(codex_wake, "queue_binary", return_value="/fixture/codex"),
+                        patch.object(codex_wake, "ownership", return_value={"app": APP})]
         for item in self.patches:
             item.start()
 
@@ -345,7 +349,229 @@ class WakeOnSend(Base):
             self.assertIn("must collect them", self.bridge.get(message["id"])["warnings"][0])
 
 
+class Ownership(Base):
+    """Only the desktop app (or nothing) may hold the chat; anything else or any doubt refuses."""
+
+    def setUp(self):
+        super().setUp()
+        self.patches[-1].stop()
+        self.patches.pop()
+        self.codex = tempfile.TemporaryDirectory()
+        self.rollout = Path(self.codex.name, "sessions", "2026", "11", "20", "rollout-2026-11-20T00-00-00-" + IDENT + ".jsonl")
+        self.rollout.parent.mkdir(parents=True)
+        self.rollout.write_text("{}\n")
+        self.more = [patch.dict(os.environ, {"CODEX_HOME": self.codex.name}),
+                     patch.object(native, "codex_desktop_app", return_value={"path": APP, "version": "26.1117.31558"})]
+        for item in self.more:
+            item.start()
+        # pid -> (parent, executable). 300-302 is the app's own chain, as observed on WH.
+        self.table = {300: (301, APP + "/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
+                      301: (302, APP + "/Contents/Frameworks/Codex Framework.framework/Helpers/Codex (Aperitif).app/Contents/MacOS/Codex (Aperitif)"),
+                      302: (1, APP + "/Contents/MacOS/ChatGPT"),
+                      400: (401, "/opt/homebrew/bin/codex"), 401: (402, "/bin/zsh"), 402: (1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"),
+                      500: (401, APP + "/Contents/Resources/codex-cli/bin/codex")}
+        self.holders, self.lsof, self.listing = ["300"], None, ["1 /sbin/launchd"]
+
+    def tearDown(self):
+        for item in self.more:
+            item.stop()
+        self.codex.cleanup()
+        super().tearDown()
+
+    def run_fake(self, argv, **kwargs):
+        if argv[0] == "/usr/sbin/lsof":
+            self.assertEqual(argv, ["/usr/sbin/lsof", "-t", "--", str(self.rollout)])
+            if isinstance(self.lsof, Exception):
+                raise self.lsof
+            code, out, err = self.lsof or ((0, "\n".join(self.holders) + "\n", "") if self.holders else (1, "", ""))
+            return subprocess.CompletedProcess(argv, code, out, err)
+        if argv[:2] == ["/bin/ps", "-axo"]:
+            return subprocess.CompletedProcess(argv, 0, "\n".join(self.listing) + "\n", "")
+        if argv[:3] == ["/bin/ps", "-o", "ppid=,comm="]:
+            row = self.table.get(int(argv[-1]))
+            return subprocess.CompletedProcess(argv, 0 if row else 1, "%d %s\n" % row if row else "", "")
+        raise AssertionError("unexpected command " + repr(argv))
+
+    def check(self):
+        with patch.object(codex_wake.subprocess, "run", side_effect=self.run_fake):
+            return codex_wake.ownership(IDENT)
+
+    def refused(self, state, text):
+        with self.assertRaises(codex_wake.NotWoken) as caught:
+            self.check()
+        self.assertEqual(caught.exception.state, state)
+        self.assertIn(text, str(caught.exception))
+
+    def test_the_apps_own_server_or_no_holder_is_allowed(self):
+        self.assertEqual(self.check()["rollout_held_by_app"], [300])
+        self.holders = []
+        self.assertEqual(self.check()["rollout_held_by_app"], [])
+
+    def test_a_terminal_or_embedded_server_is_refused(self):
+        self.holders = ["300", "400"]
+        self.refused("refused_owner", "/opt/homebrew/bin/codex")
+        self.holders = ["500"]  # The app's bundled CLI, started from a terminal.
+        self.refused("refused_owner", "outside the desktop app")
+        self.holders = []
+        self.listing = ["1 /sbin/launchd", "400 codex resume " + IDENT]  # Named but not yet holding the file.
+        self.refused("refused_owner", "process 400")
+
+    def test_doubt_refuses(self):
+        self.holders = ["999"]  # Cannot be traced.
+        self.refused("refused_uncertain", "could not trace")
+        self.holders, self.lsof = ["300"], (1, "", "lsof: WARNING: can't stat()")
+        self.refused("refused_uncertain", "no clear answer")
+        self.lsof = subprocess.TimeoutExpired("lsof", 15)
+        self.refused("refused_uncertain", "could not list")
+        self.lsof = None
+        self.table[302] = (77, APP + "/Contents/MacOS/ChatGPT")  # App main not started by launchd.
+        self.refused("refused_owner", "outside the desktop app")
+
+    def test_missing_duplicate_or_archived_chat_refuses(self):
+        self.rollout.unlink()
+        self.refused("refused_uncertain", "found 0 rollout files")
+        self.rollout.write_text("{}\n")
+        twin = self.rollout.parent / ("rollout-2026-11-20T00-00-01-" + IDENT + ".jsonl")
+        twin.write_text("{}\n")
+        self.refused("refused_uncertain", "found 2 rollout files")
+        twin.unlink()
+        archived = Path(self.codex.name, "archived_sessions", "rollout-x-" + IDENT + ".jsonl")
+        archived.parent.mkdir()
+        archived.write_text("{}\n")
+        self.refused("refused_uncertain", "archived")
+
+    def test_refusal_queues_nothing_and_a_late_owner_blocks_the_link(self):
+        codex_wake.turn_on(self.bridge.db, C, None)
+        fake = Fake()
+        with patch.object(codex_wake, "ownership", side_effect=codex_wake.NotWoken("refused_owner", "terminal")):
+            message = self.send(fake)
+        self.assertEqual(fake.calls, [])
+        self.assertEqual(message["receipt"], "saved unread; not woken: a separate process owns this chat")
+        self.assertNotIn("wake queued", message["delivery_note"])
+        fake = Fake()
+        with patch.object(codex_wake, "ownership", side_effect=[{"app": APP}, codex_wake.NotWoken("refused_owner", "late")]):
+            message = self.send(fake)
+        self.assertEqual(fake.calls, [self.queue_argv()])
+        self.assertEqual(message["wake"]["state"], "blocked_after_queue")
+        self.assertIn("app link was not opened", message["receipt"])
+        fake = Fake()
+        with patch.object(codex_wake, "ownership", side_effect=codex_wake.NotWoken("refused_uncertain", "doubt")):
+            self.assertIn("could not be verified", self.send(fake)["receipt"])
+        self.assertEqual(fake.calls, [])
+
+
+class Concurrency(Base):
+    def setUp(self):
+        super().setUp()
+        codex_wake.turn_on(self.bridge.db, C, None)
+
+    def test_concurrent_sends_queue_one_wake_and_pending_is_not_reported_queued(self):
+        release, calls, lock = threading.Event(), [], threading.Lock()
+        def slow(argv, **kwargs):
+            with lock:
+                calls.append(list(argv))
+            if argv[1:2] == ["queue"]:
+                release.wait(10)
+            return Fake()(argv)
+        results, errors = {}, []
+        def sender(n):
+            try:
+                with Bridge() as bridge:
+                    results[n] = bridge.send(A, C, "concurrent " + str(n), "test only", expects="ack")
+            except Exception as exc:
+                errors.append(exc)
+        with patch.object(codex_wake.subprocess, "run", side_effect=slow):
+            first = threading.Thread(target=sender, args=(0,))
+            first.start()
+            for _ in range(500):
+                if calls:
+                    break
+                time.sleep(.01)
+            others = [threading.Thread(target=sender, args=(n,)) for n in range(1, 8)]
+            for thread in others:
+                thread.start()
+            for thread in others:
+                thread.join(20)
+            # While the first wake is still being queued, others are not told it is queued.
+            for n in range(1, 8):
+                self.assertEqual(results[n]["receipt"], "saved unread; wake not yet confirmed")
+                self.assertNotIn("wake queued", results[n]["delivery_note"])
+            release.set()
+            first.join(20)
+        self.assertEqual(errors, [])
+        self.assertEqual([c[0] if c[0] == "/usr/bin/open" else c[1] for c in calls], ["queue", "/usr/bin/open"])
+        wakes = {results[n]["wake"]["id"] for n in results}
+        self.assertEqual(len(wakes), 1)
+        for n in range(8):
+            self.assertEqual(self.bridge.get(results[n]["id"])["receipt"], "saved unread; wake queued")
+
+    def test_no_message_joins_a_wake_whose_chat_already_read_past_it(self):
+        reads, errors, stop = [], [], threading.Event()
+        def sender(n):
+            try:
+                with Bridge() as bridge:
+                    for i in range(6):
+                        bridge.send(A, C, "m%d-%d" % (n, i), "test only", expects="ack")
+            except Exception as exc:
+                errors.append(exc)
+        def reader():
+            try:
+                with Bridge() as bridge:
+                    while not stop.is_set():
+                        before = bridge.db.execute("SELECT read_at FROM inbox_reads WHERE chat=?", (C,)).fetchone()
+                        ids = {row["id"] for row in bridge.inbox(C)}
+                        after = bridge.db.execute("SELECT read_at FROM inbox_reads WHERE chat=?", (C,)).fetchone()
+                        if after and after != before:
+                            reads.append((after[0], ids))
+                        time.sleep(.01)
+            except Exception as exc:
+                errors.append(exc)
+        with patch.object(codex_wake.subprocess, "run", side_effect=Fake()):
+            watcher = threading.Thread(target=reader)
+            watcher.start()
+            senders = [threading.Thread(target=sender, args=(n,)) for n in range(4)]
+            for thread in senders:
+                thread.start()
+            for thread in senders:
+                thread.join(60)
+            stop.set()
+            watcher.join(20)
+        self.assertEqual(errors, [])
+        self.assertTrue(reads)
+        links = self.bridge.db.execute("SELECT w.message_id,w.coalesced,s.created FROM message_wakes w "
+                                       "JOIN wake_signals s ON s.id=w.wake_id").fetchall()
+        self.assertEqual(len(links), 24)
+        self.assertTrue(any(row[1] for row in links) and not all(row[1] for row in links))
+        # A message joined an earlier wake only if every inbox read recorded after that wake saw it.
+        for message_id, coalesced, created in links:
+            if coalesced:
+                for read_at, ids in reads:
+                    if read_at >= created:
+                        self.assertIn(message_id, ids)
+
+
 class Inbox(Base):
+    def test_one_read_returns_every_unread_message_or_does_not_count(self):
+        with patch.object(codex_wake.subprocess, "run", side_effect=Fake()):
+            for n in range(130):
+                self.bridge.send(A, C, "bulk %d" % n, "test only", expects="none")
+        rows = self.bridge.inbox(C)
+        self.assertEqual(len(rows), 130)  # Not cut at 100 while any is unread.
+        self.assertIsNotNone(self.bridge.db.execute("SELECT 1 FROM inbox_reads WHERE chat=?", (C,)).fetchone())
+        codex_wake.turn_on(self.bridge.db, C, None)
+        self.bridge.db.execute("DELETE FROM inbox_reads")
+        self.bridge.db.commit()
+        fake = Fake()
+        first = self.send(fake, "after")
+        with patch.object(codex_wake, "UNREAD_LIMIT", 100):
+            self.assertEqual(len(self.bridge.inbox(C, unread=True)), 100)
+        self.assertIsNone(self.bridge.db.execute("SELECT 1 FROM inbox_reads WHERE chat=?", (C,)).fetchone())
+        second = self.send(fake, "later")
+        self.assertEqual(second["wake"]["id"], first["wake"]["id"])  # An incomplete read did not end the wake.
+        self.bridge.inbox(C, unread=True)
+        self.assertNotEqual(self.send(fake, "last")["wake"]["id"], first["wake"]["id"])
+
+
     def test_unread_filter_and_authority_on_every_row(self):
         fake = Fake()
         first = self.send(fake, "one")

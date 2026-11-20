@@ -71,10 +71,11 @@ Only you, in your own terminal, or the chat itself can turn wake on. A sender ne
 When wake is on for a chat and a send to it finds no live route (no loaded shared-server terminal, no desktop channel), AgentPeers:
 
 1. saves the message unread in the mailbox, exactly as without wake;
-2. queues one fixed wake signal for that chat with the Codex CLI bundled in the app (`codex queue --thread <id>`);
-3. opens the app's wake link in the background (`open -g codex://threads/wake/<id>`).
+2. checks that nothing outside the desktop app owns the chat: every process holding the chat's rollout file, or naming the chat on its command line, must belong to the app itself. A terminal Codex session (on its own embedded server or any other) or anything it cannot trace means **no wake**, reported as `saved unread; not woken: …`. The same check runs again just before the link opens. Codex offers no lock, so a process that takes the chat in the moment between that check and the app link cannot be excluded;
+3. queues one fixed wake signal for that chat with the Codex CLI bundled in the app (`codex queue --thread <id>`);
+4. opens the app's wake link in the background (`open -g codex://threads/wake/<id>`).
 
-The sender's receipt says **`saved unread; wake queued`**. That is not delivery. The message becomes `read` only when the chat itself acknowledges it. A failed or uncertain wake is recorded in the receipt and never retried. While an earlier wake for the chat has not yet collected its mailbox, later messages join it instead of queuing another; the next wake comes after the chat reads its inbox. A busy chat finishes its running turn first; the wake does not interrupt it.
+The sender's receipt says **`saved unread; wake queued`** once the queue command has confirmed it (`wake not yet confirmed` while another send's wake is still being queued). That is not delivery. The message becomes `read` only when the chat itself acknowledges it. A failed or uncertain wake is recorded in the receipt and never retried. While an earlier wake for the chat has not yet collected its mailbox, later messages join it instead of queuing another; the next wake comes after the chat reads its inbox. An inbox read returns every unread message (up to 500); a read that has to leave one out does not count as collecting the mailbox. A busy chat finishes its running turn first; the wake does not interrupt it.
 
 **What you will see.** The app records the queued text as user input, so each wake appears in that chat as a user-looking message. It says it came from AgentPeers, not from you. It is always this exact text, with no sender, message or scope in it:
 

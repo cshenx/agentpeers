@@ -21,7 +21,7 @@ import time
 import uuid
 
 from . import native
-from .config import setting, connection_env
+from .config import setting, connection, connection_env
 
 # Pinned byte for byte by tests. Never interpolate anything into it.
 WAKE_TEXT = ("AgentPeers wake signal. This text was generated automatically by AgentPeers, not written by the user. "
@@ -45,10 +45,17 @@ DISCLOSURE = ("Wake is off unless turned on for a chat. When it is on for a Code
 COALESCE_SECONDS = 3600
 OUTSTANDING = ("queueing", "queued", "uncertain")
 QUEUED = re.compile(r"Queued message ([0-9a-fA-F-]{36})")
-RECEIPTS = {"queueing": "saved unread; wake queued", "queued": "saved unread; wake queued",
+RECEIPTS = {"queueing": "saved unread; wake not yet confirmed", "queued": "saved unread; wake queued",
             "uncertain": "saved unread; wake uncertain, not retried",
             "link_failed": "saved unread; wake queued but the app link failed, not retried",
-            "failed": "saved unread; wake failed, not retried"}
+            "failed": "saved unread; wake failed, not retried",
+            "refused_owner": "saved unread; not woken: a separate process owns this chat",
+            "refused_uncertain": "saved unread; not woken: who owns this chat could not be verified",
+            "blocked_after_queue": "saved unread; wake queued but the app link was not opened: "
+                                   "a separate process took or may hold this chat, not retried"}
+# One inbox read returns every unread message up to this many. A read that
+# leaves any unread message out does not count as collecting the mailbox.
+UNREAD_LIMIT = 500
 
 
 def overridden():
@@ -180,10 +187,9 @@ def annotate(sessions):
 
 
 def record_inbox_read(db, chat):
-    """A chat that reads its inbox has collected every message saved before this moment."""
-    with db:
-        db.execute("INSERT INTO inbox_reads VALUES (?,?) ON CONFLICT(chat) DO UPDATE SET read_at=excluded.read_at",
-                   (chat, time.time()))
+    """Inside the caller's transaction: the chat has collected every unread message saved before now."""
+    db.execute("INSERT INTO inbox_reads VALUES (?,?) ON CONFLICT(chat) DO UPDATE SET read_at=excluded.read_at",
+               (chat, time.time()))
 
 
 def outstanding(db, chat, now):
@@ -214,12 +220,113 @@ def queue_binary():
     return setting("CODEX", "codex")
 
 
+class NotWoken(Exception):
+    def __init__(self, state, reason):
+        super().__init__(reason)
+        self.state = state
+
+
+def process(pid):
+    """(parent pid, executable path) of a live process, or None when it cannot be read."""
+    try:
+        result = subprocess.run(["/bin/ps", "-o", "ppid=,comm=", "-p", str(pid)],
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    parts = result.stdout.strip().split(None, 1)
+    if result.returncode or len(parts) != 2 or not parts[0].isdigit():
+        return None
+    return int(parts[0]), parts[1]
+
+
+def app_owned(pid, app):
+    """True when every process from pid up to the app's own launchd-started main process is inside the app
+    bundle; False for anything else, such as a terminal; None when the chain cannot be read."""
+    contents, main = app.rstrip("/") + "/Contents/", app.rstrip("/") + "/Contents/MacOS/"
+    for _ in range(20):
+        info = process(pid)
+        if info is None:
+            return None
+        parent, executable = info
+        if not executable.startswith(contents):
+            return False
+        if executable.startswith(main):
+            return parent == 1
+        pid = parent
+    return False
+
+
+def rollout(ident):
+    """The chat's one rollout file. An archived, missing or duplicated chat is never woken."""
+    home = connection().codex_home
+    if list((home / "archived_sessions").glob("*" + ident + "*.jsonl")):
+        raise NotWoken("refused_uncertain", "the chat is archived")
+    found = list((home / "sessions").glob("*/*/*/rollout-*-" + ident + ".jsonl"))
+    if len(found) != 1:
+        raise NotWoken("refused_uncertain", "found " + str(len(found)) + " rollout files for this chat, not exactly one")
+    return found[0]
+
+
+def ownership(ident):
+    """Refuse unless only the desktop app (or nothing) holds the chat. Fails safe on any doubt.
+
+    Two independent views: processes holding the chat's rollout file (lsof),
+    and processes naming the chat on their command line (a terminal resume).
+    Each one must be the desktop app's own process. Codex offers no lock, so
+    this is checked before queueing and again just before opening the link;
+    a process that takes the chat in between cannot be excluded.
+    """
+    app = native.codex_desktop_app()
+    if not app:
+        raise NotWoken("failed", "no Codex desktop app found")
+    path = rollout(ident)
+    try:
+        held = subprocess.run(["/usr/sbin/lsof", "-t", "--", str(path)], capture_output=True, text=True, timeout=15)
+        listing = subprocess.run(["/bin/ps", "-axo", "pid=,command="], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise NotWoken("refused_uncertain", "could not list the chat's processes: " + str(exc)) from exc
+    if held.returncode == 0 and held.stdout.strip():
+        holders = held.stdout.split()
+    elif held.returncode == 1 and not held.stdout.strip() and not held.stderr.strip():
+        holders = []
+    else:
+        raise NotWoken("refused_uncertain", "lsof gave no clear answer (exit " + str(held.returncode) + ")")
+    if listing.returncode or not listing.stdout.strip():
+        raise NotWoken("refused_uncertain", "the process list could not be read")
+    own, pid = set(), os.getpid()
+    while pid > 1 and len(own) < 30:  # This command and the shell that started it may name the chat.
+        own.add(pid)
+        info = process(pid)
+        if info is None:
+            break
+        pid = info[0]
+    naming = [line.split(None, 1)[0] for line in listing.stdout.splitlines()
+              if ident in line and not (line.split(None, 1)[0].isdigit() and int(line.split(None, 1)[0]) in own)]
+    owners = []
+    for pid in dict.fromkeys(holders + naming):
+        if not pid.isdigit():
+            raise NotWoken("refused_uncertain", "unreadable process id " + repr(pid))
+        owned = app_owned(int(pid), app["path"])
+        if owned is None:
+            raise NotWoken("refused_uncertain", "could not trace process " + pid + " to its parent")
+        if not owned:
+            info = process(int(pid))
+            raise NotWoken("refused_owner", "process " + pid + " (" + (info[1] if info else "unknown") +
+                           ") outside the desktop app holds or names this chat")
+        owners.append(int(pid))
+    return {"app": app["path"], "rollout_held_by_app": [int(p) for p in holders], "app_processes": owners}
+
+
 def run_wake(chat):
     """Queue WAKE_TEXT for the chat, then open the wake link. Exactly one attempt of each; never retried."""
     ident = chat.split(":", 1)[1]
     detail = {"queue_attempted": False, "link_attempted": False}
     if platform.system() != "Darwin":
         return "failed", {**detail, "reason": "wake requires macOS"}
+    try:
+        detail["owner_before_queue"] = ownership(ident)
+    except NotWoken as exc:
+        return exc.state, {**detail, "reason": str(exc)}
     binary = queue_binary()
     detail.update(queue_attempted=True, codex=binary)
     try:
@@ -237,6 +344,10 @@ def run_wake(chat):
     if not found:
         return "uncertain", {**detail, "reason": "codex queue exited 0 without confirming a queued message"}
     detail["queued_message"] = found.group(1)
+    try:
+        detail["owner_before_link"] = ownership(ident)
+    except NotWoken as exc:
+        return "blocked_after_queue", {**detail, "reason": str(exc)}
     detail["link_attempted"] = True
     try:
         opened = subprocess.run(["/usr/bin/open", "-g", "codex://threads/wake/" + ident],
@@ -252,9 +363,9 @@ def after_unavailable(db, message_id, chat):
     """Called after a send to a codex: chat stored the message with no live route."""
     if not enabled(db, chat):
         return None
-    now = time.time()
     with db:
-        db.execute("BEGIN IMMEDIATE")  # Concurrent senders see each other's pending wake.
+        db.execute("BEGIN IMMEDIATE")  # Concurrent senders and inbox reads see each other.
+        now = time.time()
         current = outstanding(db, chat, now)
         if current is not None:
             db.execute("INSERT OR IGNORE INTO message_wakes VALUES (?,?,1)", (message_id, current["id"]))

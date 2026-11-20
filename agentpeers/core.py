@@ -135,7 +135,7 @@ class Bridge:
                 "Saved unread; wake queued. Not delivered: no live route reached the chat. AgentPeers queued its "
                 "fixed wake signal, so the chat should run a turn, read its mailbox and acknowledge. "
                 "Only that acknowledgment marks it read. Do not resend or claim the session ended."
-                if wake and wake["state"] in ("queueing", "queued") else
+                if wake and wake["state"] == "queued" else
                 "Saved unread; " + wake["receipt"].split("; ", 1)[1] + ". Not delivered. "
                 "The receiving session can collect it with agentpeers inbox, then acknowledge after reading. "
                 "Do not resend or claim the session ended." if wake else
@@ -163,7 +163,7 @@ class Bridge:
             }.get(code, "The destination's receiving route is unavailable.")
             result["destination_note"] = "At the failed attempt: " + explanation + (" The recipient has since read the saved mailbox message." if result["read_at"] else
                 " The message is saved for the recipient to collect from its mailbox; a wake signal asks the chat "
-                "to collect it, which is not delivery." if result["recipient"] and wake and wake["state"] in ("queueing", "queued") else
+                "to collect it, which is not delivery." if result["recipient"] and wake and wake["state"] == "queued" else
                 " The message is saved for the recipient to collect from its mailbox; "
                 "it will not automatically arrive when the chat is reopened." if result["recipient"] else
                 " No recipient mailbox was assigned; nothing will automatically arrive later.")
@@ -194,8 +194,6 @@ class Bridge:
     def inbox(self, actor, unread=False):
         if not isinstance(unread, bool):
             raise ValueError("unread must be true or false")
-        # Recorded before the query: anything saved earlier is in this result.
-        codex_wake.record_inbox_read(self.db, actor)
         has_names = self.db.execute("SELECT 1 FROM message_routes WHERE recipient_name IS NOT NULL LIMIT 1").fetchone()
         name = name_for(actor) if has_names else None
         owned = None
@@ -206,10 +204,25 @@ class Bridge:
                     owned = name
             except native.Unavailable:
                 pass
-        return [{"authority": AUTHORITY, **self.get(row[0])} for row in self.db.execute(
-            "SELECT m.id FROM messages m LEFT JOIN message_routes r ON r.message_id=m.id "
-            "WHERE (m.recipient=? OR (r.recipient_name=? AND m.recipient<>''))" +
-            (" AND m.read_at IS NULL" if unread else "") + " ORDER BY m.created DESC LIMIT 100", (actor, owned))]
+        select = ("SELECT m.id,m.created FROM messages m LEFT JOIN message_routes r ON r.message_id=m.id "
+                  "WHERE (m.recipient=? OR (r.recipient_name=? AND m.recipient<>''))")
+        limit = codex_wake.UNREAD_LIMIT
+        # Every unread message is returned (up to the limit), with the 100 newest
+        # when read ones are wanted too. Selecting and recording the read in one
+        # write transaction orders it against concurrent sends and their wakes.
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            pending = self.db.execute(select + " AND m.read_at IS NULL ORDER BY m.created DESC LIMIT ?",
+                                      (actor, owned, limit + 1)).fetchall()
+            complete = len(pending) <= limit
+            chosen = {row[0]: row[1] for row in pending[:limit]}
+            if not unread:
+                chosen.update((row[0], row[1]) for row in self.db.execute(
+                    select + " ORDER BY m.created DESC LIMIT 100", (actor, owned)))
+            if complete:
+                codex_wake.record_inbox_read(self.db, actor)
+        ordered = sorted(chosen, key=lambda ident: chosen[ident], reverse=True)
+        return [{"authority": AUTHORITY, **self.get(ident)} for ident in ordered]
 
     def can_receive(self, row, actor):
         if row["recipient"] == actor:
