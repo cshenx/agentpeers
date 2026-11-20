@@ -45,4 +45,5 @@ def policy(enabled=None):
 
 
 def enabled():
-    return policy()["enabled"]
+    from .codex_wake import overridden
+    return not overridden() and policy()["enabled"]

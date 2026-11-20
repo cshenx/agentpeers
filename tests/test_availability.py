@@ -46,7 +46,9 @@ class AvailabilityJourney(unittest.TestCase):
         self.assertIsNone(failed.exception.diagnostics['shared_target_loaded'])
 
     def test_connection_failure_does_not_claim_app_exited(self):
-        with patch.object(native, 'owned_path'), patch.object(native.socket, 'socket') as sock:
+        old_app = {'path': '/Applications/Codex.app', 'version': '26.1013.40934'}
+        with patch.object(native, 'owned_path'), patch.object(native.socket, 'socket') as sock, \
+             patch.object(native, 'codex_desktop_app', return_value=old_app):
             sock.return_value.connect.side_effect = ConnectionRefusedError('fixture')
             with self.assertRaises(native.Unavailable) as failed:
                 with native.Desktop():

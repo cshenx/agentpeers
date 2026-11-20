@@ -3,9 +3,9 @@ import json
 import os
 from pathlib import Path
 import platform
-import plistlib
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -103,21 +103,15 @@ def doctor(actor=None):
     claude = shutil.which("claude")
     add("claude_code", "pass" if claude else "fail", "Found" if claude else "Not found on PATH",
         "Install Claude Code and make claude available on PATH.")
-    app_version = None
-    for path in [Path("/Applications/ChatGPT.app/Contents/Info.plist"),
-                 Path("/Applications/Codex.app/Contents/Info.plist"),
-                 Path.home() / "Applications/ChatGPT.app/Contents/Info.plist",
-                 Path.home() / "Applications/Codex.app/Contents/Info.plist"]:
-        if path.exists():
-            try:
-                with path.open("rb") as source:
-                    app_version = plistlib.load(source).get("CFBundleShortVersionString")
-            except (OSError, ValueError, plistlib.InvalidFileException):
-                pass
-            break
+    app = native.codex_desktop_app()
+    app_version = app and app["version"]
     add("desktop_version", "pass" if app_version in ("26.1007.30912", "26.1013.40934") else "warning",
         app_version or "App version not found at standard locations",
-        "Desktop IPC is unpublished. Verify a live exchange after each app update.")
+        {"inspected": "This Codex desktop build was inspected without desktop IPC; its chats cannot receive. "
+                      + native.RECEIVE_GUIDANCE,
+         "newer": "Newer than the inspected build without desktop IPC; desktop receiving is unverified. "
+                  + native.RECEIVE_GUIDANCE}.get(app and native.desktop_ipc_finding(app),
+        "Desktop IPC is unpublished. Verify a live exchange after each app update."))
     terminal_ready = False
     loaded = set()
     try:
@@ -137,6 +131,14 @@ def doctor(actor=None):
     except (OSError, ValueError) as exc:
         add("desktop_wake", "fail", "Could not read desktop wake policy: " + str(exc))
         wake = {"enabled": False}
+    from . import codex_wake
+    try:
+        chats = codex_wake.chats_on()
+        add("codex_wake", "pass", ("AGENTPEERS_WAKE=off: wake is off for every chat. " if codex_wake.overridden() else
+            "On for " + str(len(chats)) + " Codex chat(s): " + ", ".join(chats) + ". " if chats else
+            "Off for every chat. ") + codex_wake.DISCLOSURE)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        add("codex_wake", "fail", "Could not read wake settings: " + str(exc))
     desktop_ready = False
     desktop_connected = False
     wake_candidate = False

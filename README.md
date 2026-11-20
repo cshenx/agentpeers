@@ -99,7 +99,7 @@ Connect coding sessions on the same Mac. Use **Claude Code in a terminal** with 
 
 **[Set up Claude Code and Codex →](docs/coding-sessions.md)**
 
-Requires macOS, Python 3.10+ and the native receiving interfaces described in the guide. No AgentPeers server or new model API key is needed. Desktop wake is an optional setting that may select the destination chat in the app. A desktop-visible chat can be hosted elsewhere; direct delivery to durable or remote-hosted Codex chats is outside this local connection. [Check the receiving requirements](docs/coding-sessions.md#3-open-the-sessions).
+Requires macOS, Python 3.10+ and the native receiving interfaces described in the guide. No AgentPeers server or new model API key is needed. Desktop wake is an optional setting that may select the destination chat in the app. For Codex chats in ChatGPT.app, which has no desktop channel, per-chat [wake](docs/coding-sessions.md#wake-a-codex-chat-in-chatgptapp-opt-in) (off by default) queues a fixed AgentPeers signal that appears in that chat as a user-looking message and makes it read its mailbox. A desktop-visible chat can be hosted elsewhere; direct delivery to durable or remote-hosted Codex chats is outside this local connection. [Check the receiving requirements](docs/coding-sessions.md#3-open-the-sessions).
 
 <a id="tested-connections"></a>
 <a id="tested-codex-and-claude-code-connections"></a>

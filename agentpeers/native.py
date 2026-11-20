@@ -5,6 +5,7 @@ import json
 import os
 import platform
 from pathlib import Path
+import plistlib
 import queue
 import socket
 import stat
@@ -273,11 +274,105 @@ def codex_sessions():
         finally:
             client.__exit__()
     rows = list(rows.values())
+    stored = desktop_unreachable_note() or "AgentPeers reachability unverified; native Codex messaging may be available"
     return [{"id": "codex:" + row["id"], "runtime": "codex",
              "surface": "shared-server" if row["id"] in live else "desktop-or-stored",
              "name": row.get("name") or row.get("preview") or row["id"], "name_address": row.get("name"),
-             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else "AgentPeers reachability unverified; native Codex messaging may be available"}
+             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else stored}
             for row in rows]
+
+
+# Codex desktop builds inspected and found to ship no desktop IPC router: the
+# methods Desktop uses are absent from the app and nothing listens on the
+# socket. Only these exact builds are diagnosed as lacking IPC; a newer build
+# is reported as unverified, and a successful connection always wins.
+DESKTOP_INSPECTED_WITHOUT_IPC = ("26.1117.31558",)
+
+RECEIVE_GUIDANCE = ("To let a chat receive in a terminal, first stop its active session in the app: let any running "
+                    "turn finish, then close the chat there. Closing it may not release it, so next confirm the app "
+                    "has released the chat: no app process holds its rollout file (check with lsof on that file). "
+                    "If the release cannot be confirmed, do not resume the chat in a terminal. Only after it is "
+                    "confirmed, run it in a terminal on the shared server (codex app-server daemon start, then "
+                    "codex resume <chat id>).")
+
+
+def codex_desktop_app(roots=None):
+    """Installed Codex desktop (bundle com.openai.codex), or None. Reads Info.plist only."""
+    for base in roots or (Path("/"), Path.home()):
+        for name in ("Codex.app", "ChatGPT.app"):
+            app = base / "Applications" / name
+            try:
+                with (app / "Contents" / "Info.plist").open("rb") as source:
+                    info = plistlib.load(source)
+            except (OSError, ValueError, plistlib.InvalidFileException):
+                continue
+            if info.get("CFBundleIdentifier") == "com.openai.codex":
+                return {"path": str(app), "version": str(info.get("CFBundleShortVersionString") or "")}
+    return None
+
+
+def _version(text):
+    return tuple(int(part) for part in text.split("."))
+
+
+def desktop_ipc_finding(app):
+    """'inspected' for a build inspected without desktop IPC, 'newer' for a later uninspected build, else None."""
+    try:
+        version = app["version"]
+        if version in DESKTOP_INSPECTED_WITHOUT_IPC:
+            return "inspected"
+        if _version(version) > max(_version(v) for v in DESKTOP_INSPECTED_WITHOUT_IPC):
+            return "newer"
+    except (KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
+def desktop_ipc_unsupported(error, path=None):
+    """A structured failure for a refused or missing socket on an inspected or later build, else None."""
+    if not isinstance(error, (ConnectionRefusedError, FileNotFoundError)):
+        return None
+    app = codex_desktop_app()
+    finding = app and desktop_ipc_finding(app)
+    if not finding:
+        return None
+    inspected = DESKTOP_INSPECTED_WITHOUT_IPC[-1]
+    observed = "Desktop IPC connection failed" + (" at " + str(path) if path else "") + ": " + str(error) + ". "
+    if finding == "inspected":
+        diagnosis = ("Codex desktop " + app["version"] + " (" + app["path"] + ") is a build inspected without a "
+                     "desktop IPC router, so AgentPeers cannot deliver to its chats. ")
+        code = "desktop_ipc_unsupported"
+    else:
+        diagnosis = ("Codex desktop " + app["version"] + " (" + app["path"] + ") is newer than the inspected build "
+                     + inspected + ", which has no desktop IPC router; whether this build has one is unverified. ")
+        code = "desktop_connection_unavailable"
+    return Unavailable(observed + diagnosis + "Live delivery was not attempted. " + RECEIVE_GUIDANCE,
+                       code=code, desktop_connected=False, desktop_app=app["path"], desktop_version=app["version"],
+                       desktop_ipc_inspected_absent_in=inspected, connection_error=str(error),
+                       live_delivery_attempted=False)
+
+
+def desktop_unreachable_note():
+    """Filesystem and connect-only probe for session listings; sends nothing."""
+    app = codex_desktop_app()
+    finding = app and desktop_ipc_finding(app)
+    if not finding:
+        return None
+    probe = socket.socket(socket.AF_UNIX)
+    probe.settimeout(1)
+    try:
+        probe.connect(str(connection().codex_home / "ipc" / "ipc.sock"))
+        return None
+    except OSError as exc:
+        if not desktop_ipc_unsupported(exc):
+            return None
+        if finding == "inspected":
+            return ("not reachable by AgentPeers: desktop IPC connection failed, and Codex desktop " + app["version"] +
+                    " was inspected without desktop IPC; reachable only if loaded on the shared server")
+        return ("AgentPeers reachability unverified: desktop IPC connection failed on Codex desktop " + app["version"] +
+                ", newer than the inspected build without desktop IPC; reachable if loaded on the shared server")
+    finally:
+        probe.close()
 
 
 class Desktop:
@@ -301,6 +396,9 @@ class Desktop:
         except OSError as exc:
             if hasattr(self, "sock"):
                 self.sock.close()
+            unsupported = desktop_ipc_unsupported(exc, path)
+            if unsupported:
+                raise unsupported from exc
             raise Unavailable("Cannot connect to Codex desktop IPC; this does not prove the app is closed. " + str(exc),
                               code="desktop_connection_unavailable", desktop_connected=False) from exc
         try:

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0 — wake a Codex chat in ChatGPT.app
+
+- Opt-in per chat: `agentpeers wake on|off <chat>`, `agentpeers wake off --all`, `agentpeers wake status`. Only the person in a terminal, or the chat itself, can turn it on; the command refuses inside a Claude Code session or another Codex chat. Who turned it on or off, and when, is recorded. `AGENTPEERS_WAKE=off` overrides everything, including desktop wake.
+- A send to a Codex chat with wake on and no live route stores the message as before, then queues one constant wake signal with the Codex CLI bundled in the app (`codex queue --thread <id>`) and opens `codex://threads/wake/<id>` in the background. The receipt says `saved unread; wake queued`, never delivered. A failed or uncertain wake is recorded and never retried. Live routes keep priority.
+- The wake text is one constant pinned byte for byte by a test. No sender, body, summary or scope ever goes into it; the message is read only through the inbox tool.
+- No wake for a chat that anything outside the desktop app owns: every process holding the chat's rollout file or naming the chat on its command line must trace back to the app's own launchd-started process. A terminal or embedded server, an archived, missing or duplicated rollout, or any unreadable answer refuses the wake. The check is the only gate and runs immediately before the queue; nothing is checked after it, because a queued signal may already have run. Codex has no lock an outside tool can hold, so a process that starts and loads the chat between the check and the queue is not excluded; the receipt records both times.
+- Coalescing: no new wake while an earlier one for that chat has not yet collected its mailbox (no complete inbox read since, and some covered message still unread; at most one hour). Sends and inbox reads are ordered by one write transaction each. A wake still being queued is reported as "wake not yet confirmed", not queued.
+- Inbox always returns every unread message, with no cap, alongside the 100 newest, so one read collects the whole mailbox.
+- `inbox --unread` (MCP `unread: true`). Every inbox and acknowledge row now carries the same authority note as a live envelope.
+- `list_sessions` and `list` show wake on or off for each Codex chat. Setup reports it, and the docs and skill disclose what the chat shows: a user-looking message from AgentPeers, the chat's reply and a turn-complete notification.
+
+## 0.10.1 — Codex desktop inside ChatGPT.app
+
+- Codex desktop 26.1117.31558 moved into ChatGPT.app (same bundle, `com.openai.codex`). The inspected build ships no desktop IPC router, and its leftover socket refuses connections. On that build a refused or missing socket now fails with `desktop_ipc_unsupported`: the observed connection error, the app and version, and the statement that live delivery was not attempted. A saved message is reported as unread in the recipient's mailbox. A newer build with the same failure keeps `desktop_connection_unavailable` and says its IPC is unverified.
+- Guidance to move a chat into a terminal on the shared server first says to stop the chat's active session in the app, then to confirm the app has released it (no app process holds its rollout file), and not to resume it in a terminal if that cannot be confirmed.
+- Session listings and setup report the same finding; setup reads the Codex desktop version from either app name and skips the separate ChatGPT chat app.
+- Codex.app builds with desktop IPC keep their existing behavior. The shared-server terminal route is unchanged and was verified live against Codex CLI 0.169.0.
+
 ## 0.10.0 — research can ask its local Codex launcher
 
 - Add temporary, scoped research handoffs pairing an ordinary ChatGPT requester with the exact local Codex session that launched it. Reuse AgentPeers Context’s separate factual requester identity and the existing cloud service.
