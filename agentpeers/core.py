@@ -134,6 +134,7 @@ class Bridge:
             explanation = {
                 "desktop_owner_missing": "The desktop connection works, but this chat has no compatible active receiver.",
                 "desktop_connection_unavailable": "The desktop connection could not be reached. Whether the app is running is unknown.",
+                "desktop_ipc_unsupported": "The desktop IPC connection failed, and this Codex desktop build was inspected without desktop IPC. Live delivery was not attempted.",
                 "desktop_handshake_failed": "The desktop connection could not be verified. Whether the app is running is unknown.",
                 "desktop_owner_discovery_failed": "The desktop connection works, but this chat's receiving state could not be verified.",
                 "desktop_owner_incompatible": "This chat has a receiver, but it cannot accept AgentPeers messages safely.",
@@ -338,7 +339,9 @@ class Bridge:
             if not by_name:
                 detail.update(self.unavailable_hint(recipient))
                 detail["transport_reason"] = detail["reason"]
-                detail["reason"] = "Automatic delivery unavailable; message retained in the recipient's mailbox. " + str(exc)
+                detail["reason"] = ("Live delivery was not attempted; the message is saved unread in the recipient's mailbox. "
+                                    if exc.diagnostics.get("live_delivery_attempted") is False else
+                                    "Automatic delivery unavailable; message retained in the recipient's mailbox. ") + str(exc)
         except (native.Unconfirmed, OSError, ValueError, KeyError) as exc:
             status, detail = "unconfirmed", {"reason": str(exc), "automatic_retry": False}
         with self.db:

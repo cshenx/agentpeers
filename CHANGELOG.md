@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 — Codex desktop inside ChatGPT.app
+
+- Codex desktop 26.1117.31558 moved into ChatGPT.app (same bundle, `com.openai.codex`). The inspected build ships no desktop IPC router, and its leftover socket refuses connections. On that build a refused or missing socket now fails with `desktop_ipc_unsupported`: the observed connection error, the app and version, and the statement that live delivery was not attempted. A saved message is reported as unread in the recipient's mailbox. A newer build with the same failure keeps `desktop_connection_unavailable` and says its IPC is unverified.
+- Guidance to move a chat into a terminal on the shared server first says to stop the chat's active session in the app, then to confirm the app has released it (no app process holds its rollout file), and not to resume it in a terminal if that cannot be confirmed.
+- Session listings and setup report the same finding; setup reads the Codex desktop version from either app name and skips the separate ChatGPT chat app.
+- Codex.app builds with desktop IPC keep their existing behavior. The shared-server terminal route is unchanged and was verified live against Codex CLI 0.169.0.
+
 ## 0.10.0 — research can ask its local Codex launcher
 
 - Add temporary, scoped research handoffs pairing an ordinary ChatGPT requester with the exact local Codex session that launched it. Reuse AgentPeers Context’s separate factual requester identity and the existing cloud service.
