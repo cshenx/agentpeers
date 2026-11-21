@@ -136,6 +136,8 @@ class Bridge:
                 "fixed wake signal, so the chat should run a turn, read its mailbox and acknowledge. "
                 "Only that acknowledgment marks it read. Do not resend or claim the session ended."
                 if wake and wake["state"] == "queued" else
+                "Saved unread; not woken: no reply expected. The receiving session can collect it on its next inbox read, "
+                "then acknowledge after reading. Do not resend." if wake and wake["state"] == "no_reply_expected" else
                 "Saved unread; " + wake["receipt"].split("; ", 1)[1] + ". Not delivered. "
                 "The receiving session can collect it with agentpeers inbox, then acknowledge after reading. "
                 "Do not resend or claim the session ended." if wake else
@@ -175,7 +177,7 @@ class Bridge:
         elif (result["return_route"] and result["return_route"]["status"] != "available"
               and codex_wake.enabled(self.db, result["sender"])):
             result["warnings"].append("No live reply route was verified for this sender, but wake is on for it: "
-                "a reply is saved in its mailbox and AgentPeers queues a wake signal asking it to collect it. "
+                "a reply is saved in its mailbox; AgentPeers queues a wake signal if a response is expected. "
                 "A queued wake is not delivery or a read.")
         elif result["return_route"] and result["return_route"]["status"] != "available":
             result["warnings"].append("No automatic reply route was verified for this sender. "
@@ -388,7 +390,7 @@ class Bridge:
                             (status, json.dumps(detail), ident))
         if status == "unavailable" and recipient.startswith("codex:"):
             # Stored first, as without wake. Then at most one wake signal, never retried.
-            codex_wake.after_unavailable(self.db, ident, recipient)
+            codex_wake.after_unavailable(self.db, ident, recipient, expects, reply_to)
         return self.get(ident)
 
     def ask_dispatcher(self, assignment_id, actor, question):

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 — hold no-reply messages without waking
+
+- New messages with `expects=none` to a Codex chat with wake on and no live route stay unread without queuing a wake. The receipt says `saved unread; not woken: no reply expected`. Replies still queue a wake regardless of `expects`. The next inbox read collects held messages, including when a later message queues a wake.
+
 ## 0.11.0 — wake a Codex chat in ChatGPT.app
 
 - Opt-in per chat: `agentpeers wake on|off <chat>`, `agentpeers wake off --all`, `agentpeers wake status`. Only the person in a terminal, or the chat itself, can turn it on; the command refuses inside a Claude Code session or another Codex chat. Who turned it on or off, and when, is recorded. `AGENTPEERS_WAKE=off` overrides everything, including desktop wake.
