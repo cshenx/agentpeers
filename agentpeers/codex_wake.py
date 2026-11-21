@@ -31,7 +31,7 @@ WAKE_TEXT = ("AgentPeers wake signal. This text was generated automatically by A
              "that is already read. If nothing is unread, reply \"No unread AgentPeers messages\" and take no other action.")
 
 DISCLOSURE = ("Wake is off unless turned on for a chat. When it is on for a Codex chat and a message to that chat finds "
-              "no live AgentPeers route, AgentPeers saves the message unread and queues a fixed wake signal with "
+              "no live AgentPeers route, AgentPeers saves the message unread and, when a response is expected, queues a fixed wake signal with "
               "codex queue, then opens the app's wake link. The chat runs a turn: the signal appears in it as a "
               "user-looking message that says it came from AgentPeers, not from you, followed by the chat's reply, "
               "and the app may post a turn-complete notification. Each wake turn uses model usage. The peer message "
@@ -79,6 +79,7 @@ def setup(db):
         id TEXT PRIMARY KEY, chat TEXT NOT NULL, created REAL NOT NULL, state TEXT NOT NULL, detail TEXT)""")
     db.execute("""CREATE TABLE IF NOT EXISTS message_wakes (
         message_id TEXT PRIMARY KEY, wake_id TEXT NOT NULL, coalesced INTEGER NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS wake_held (message_id TEXT PRIMARY KEY)""")
     db.execute("""CREATE TABLE IF NOT EXISTS inbox_reads (chat TEXT PRIMARY KEY, read_at REAL NOT NULL)""")
 
 
@@ -358,9 +359,13 @@ def run_wake(chat):
     return "queued", detail
 
 
-def after_unavailable(db, message_id, chat):
+def after_unavailable(db, message_id, chat, expects):
     """Called after a send to a codex: chat stored the message with no live route."""
     if not enabled(db, chat):
+        return None
+    if expects == "none":
+        with db:
+            db.execute("INSERT OR IGNORE INTO wake_held VALUES (?)", (message_id,))
         return None
     with db:
         db.execute("BEGIN IMMEDIATE")  # Concurrent senders and inbox reads see each other.
@@ -387,6 +392,9 @@ def receipt(db, message_id, read_at):
     row = db.execute("SELECT w.coalesced,s.* FROM message_wakes w JOIN wake_signals s ON s.id=w.wake_id "
                      "WHERE w.message_id=?", (message_id,)).fetchone()
     if row is None:
+        if db.execute("SELECT 1 FROM wake_held WHERE message_id=?", (message_id,)).fetchone():
+            return {"state": "no_reply_expected", "receipt": "read" if read_at else
+                    "saved unread; not woken: no reply expected"}
         return None
     detail = json.loads(row["detail"]) if row["detail"] else {}
     wake = {"id": row["id"], "chat": row["chat"], "state": row["state"], "queued_at": row["created"],
