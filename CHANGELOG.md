@@ -2,7 +2,7 @@
 
 ## 0.11.1 — hold no-reply messages without waking
 
-- Messages with `expects=none` to a Codex chat with wake on and no live route stay unread without queuing a wake. The receipt says `saved unread; not woken: no reply expected`. The next inbox read collects them, including when a later message queues a wake.
+- New messages with `expects=none` to a Codex chat with wake on and no live route stay unread without queuing a wake. The receipt says `saved unread; not woken: no reply expected`. Replies still queue a wake regardless of `expects`. The next inbox read collects held messages, including when a later message queues a wake.
 
 ## 0.11.0 — wake a Codex chat in ChatGPT.app
 

@@ -390,7 +390,7 @@ class Bridge:
                             (status, json.dumps(detail), ident))
         if status == "unavailable" and recipient.startswith("codex:"):
             # Stored first, as without wake. Then at most one wake signal, never retried.
-            codex_wake.after_unavailable(self.db, ident, recipient, expects)
+            codex_wake.after_unavailable(self.db, ident, recipient, expects, reply_to)
         return self.get(ident)
 
     def ask_dispatcher(self, assignment_id, actor, question):

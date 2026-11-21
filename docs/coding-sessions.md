@@ -68,14 +68,14 @@ agentpeers wake status
 
 Only you, in your own terminal, or the chat itself can turn wake on. A sender never can: the command refuses when it runs inside a Claude Code session or a different Codex chat, and it records who turned wake on and when. To have an agent do it, ask the Codex chat itself; a Claude Code session is refused. Anyone can turn it off. Setting `AGENTPEERS_WAKE=off` in a client's environment overrides everything, including desktop wake; it applies to the AgentPeers processes started with it. `list_sessions` and `agentpeers list` show `wake: on` or `off` for each Codex chat, and setup reports which chats have it on.
 
-When wake is on for a chat and a send expecting an acknowledgment or reply finds no live route (no loaded shared-server terminal, no desktop channel), AgentPeers:
+When wake is on for a chat and a reply or a new message expecting an acknowledgment or reply finds no live route (no loaded shared-server terminal, no desktop channel), AgentPeers:
 
 1. saves the message unread in the mailbox, exactly as without wake;
 2. checks that nothing outside the desktop app owns the chat: every process holding the chat's rollout file, or naming the chat on its command line, must belong to the app itself. A terminal Codex session (on its own embedded server or any other) or anything it cannot trace means **no wake**, reported as `saved unread; not woken: …`. This is the only check, and it runs immediately before the queue: once the signal is queued, whatever has the chat loaded may run it, so no later check could protect the chat. Codex offers no lock that an outside tool can hold, so a process that starts and loads the chat in the moment between this check and the queue cannot be excluded; the receipt records both times;
 3. queues one fixed wake signal for that chat with the Codex CLI bundled in the app (`codex queue --thread <id>`);
 4. opens the app's wake link in the background (`open -g codex://threads/wake/<id>`).
 
-A send with `expects=none` is saved unread without a wake, with the receipt **`saved unread; not woken: no reply expected`**. The chat collects it on its next inbox read, whether in its own turn or after a later wake. It does not prevent a later message from queuing a wake.
+A new message with `expects=none` is saved unread without a wake, with the receipt **`saved unread; not woken: no reply expected`**. The chat collects it on its next inbox read, whether in its own turn or after a later wake. Replies still queue a wake regardless of `expects`. A held message does not prevent a later message from queuing a wake.
 
 The sender's receipt says **`saved unread; wake queued`** once the queue command has confirmed it (`wake not yet confirmed` while another send's wake is still being queued). That is not delivery. The message becomes `read` only when the chat itself acknowledges it. A failed or uncertain wake is recorded in the receipt and never retried. While an earlier wake for the chat has not yet collected its mailbox, later messages join it instead of queuing another; the next wake comes after the chat reads its inbox. An inbox read returns every unread message, with no cap, so one read collects the whole mailbox. A busy chat finishes its running turn first; the wake does not interrupt it.
 
@@ -121,7 +121,7 @@ Run the setup check after installation or client updates to confirm that message
 | `submitted` | Native transport accepted a submission or completed its socket write. The agent may not have read it; native controls may still hold or refuse it. |
 | `read` | The recipient explicitly acknowledged or replied after consuming the message. This proves receipt, not completion of the requested work. |
 | `unavailable` | Automatic delivery did not submit the message. A saved recipient mailbox may still be available for deliberate collection. |
-| `saved unread; not woken: no reply expected` | Wake is on, but this message expects no reply. It waits unread for the chat’s next inbox read. |
+| `saved unread; not woken: no reply expected` | Wake is on, but this new message expects no reply. It waits unread for the chat’s next inbox read. |
 | `saved unread; wake queued` | Shown as `receipt` when wake is on for a Codex chat with no live route: the message is saved unread and a wake signal was queued. Not delivered and not read. |
 | `unconfirmed` | Submission may have happened. Check receipts before deciding on another send; AgentPeers never automatically replays it. |
 

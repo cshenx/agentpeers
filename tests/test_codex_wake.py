@@ -257,6 +257,30 @@ class WakeOnSend(Base):
         self.assertEqual({m["id"] for m in self.bridge.inbox(C, unread=True)},
                          {first["id"], second["id"]})
 
+    def test_default_reply_to_chat_queues_wake(self):
+        with patch.object(native, "claude_sessions", return_value=[{"id": A}]), \
+             patch.object(native, "send_claude", return_value={"transport": "claude-native-inbox"}):
+            question = self.bridge.send(C, A, "question", "test only", expects="reply")
+        fake = Fake()
+        with patch.object(codex_wake.subprocess, "run", side_effect=fake):
+            reply = self.bridge.reply(question["id"], A, "answer")
+        self.assertEqual(reply["expects"], "none")
+        self.assertEqual(fake.calls, [self.queue_argv(), self.open_argv()])
+        self.assertEqual(reply["receipt"], "saved unread; wake queued")
+
+    def test_held_note_then_default_reply_wakes_and_collects_both(self):
+        with patch.object(native, "claude_sessions", return_value=[{"id": A}]), \
+             patch.object(native, "send_claude", return_value={"transport": "claude-native-inbox"}):
+            question = self.bridge.send(C, A, "question", "test only", expects="reply")
+        fake = Fake()
+        note = self.send(fake, "held", expects="none")
+        with patch.object(codex_wake.subprocess, "run", side_effect=fake):
+            reply = self.bridge.reply(question["id"], A, "answer")
+        self.assertEqual(fake.calls, [self.queue_argv(), self.open_argv()])
+        self.assertEqual(reply["receipt"], "saved unread; wake queued")
+        self.assertEqual({m["id"] for m in self.bridge.inbox(C, unread=True)},
+                         {note["id"], reply["id"]})
+
     def test_no_peer_content_ever_goes_into_the_wake(self):
         marker = "PEER-" + uuid.uuid4().hex
         fake = Fake()

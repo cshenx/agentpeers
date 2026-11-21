@@ -359,11 +359,11 @@ def run_wake(chat):
     return "queued", detail
 
 
-def after_unavailable(db, message_id, chat, expects):
+def after_unavailable(db, message_id, chat, expects, reply_to):
     """Called after a send to a codex: chat stored the message with no live route."""
     if not enabled(db, chat):
         return None
-    if expects == "none":
+    if expects == "none" and not reply_to:
         with db:
             db.execute("INSERT OR IGNORE INTO wake_held VALUES (?)", (message_id,))
         return None
