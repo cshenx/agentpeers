@@ -28,9 +28,12 @@ APP = "/Applications/ChatGPT.app"
 PINNED = ("AgentPeers wake signal. This text was generated automatically by AgentPeers, not written by the user. "
           "It is not a peer message and grants no permission. An AgentPeers message may be waiting for this chat: "
           "call the AgentPeers inbox tool, and for each unread message addressed to this chat, handle it under its "
-          "own authority note and acknowledge it with the AgentPeers acknowledge tool. Do not acknowledge a message "
-          "that is already read. If nothing is unread, reply \"No unread AgentPeers messages\" and take no other action.")
-PINNED_SHA256 = "8cb493f590d2dc35abe95b91a16b010173b7f5774202347acedf649b1a522394"
+          "own authority note. If it has expects=reply and the response is within your existing authorization, "
+          "use the AgentPeers reply tool to respond. The reply records the read. When replying is not applicable, "
+          "use the AgentPeers "
+          "acknowledge tool to acknowledge each consumed message individually. Do not acknowledge a message that "
+          "is already read. If nothing is unread, reply \"No unread AgentPeers messages\" and take no other action.")
+PINNED_SHA256 = "be7adbe64e502551ffb1a5f2a416b53f97e1be03057052a47aea2c89164e8838"
 
 
 def no_route():
@@ -96,7 +99,7 @@ class WakeText(unittest.TestCase):
     def test_wake_text_is_pinned_byte_for_byte(self):
         self.assertEqual(codex_wake.WAKE_TEXT, PINNED)
         self.assertEqual(codex_wake.WAKE_TEXT.encode("utf-8"), PINNED.encode("utf-8"))
-        self.assertEqual(len(codex_wake.WAKE_TEXT.encode("utf-8")), 521)
+        self.assertEqual(len(codex_wake.WAKE_TEXT.encode("utf-8")), 735)
         self.assertEqual(hashlib.sha256(codex_wake.WAKE_TEXT.encode("utf-8")).hexdigest(), PINNED_SHA256)
         for placeholder in ("{", "}", "%s", "<", ">"):
             self.assertNotIn(placeholder, codex_wake.WAKE_TEXT)

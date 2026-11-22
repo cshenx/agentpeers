@@ -133,8 +133,8 @@ class Bridge:
         if result["status"] == "unavailable" and result["recipient"]:
             result["delivery_note"] = ("Read from the mailbox; automatic delivery was unavailable." if result["read_at"] else
                 "Saved unread; wake queued. Not delivered: no live route reached the chat. AgentPeers queued its "
-                "fixed wake signal, so the chat should run a turn, read its mailbox and acknowledge. "
-                "Only that acknowledgment marks it read. Do not resend or claim the session ended."
+                "fixed wake signal, so the chat should run a turn and check its mailbox. "
+                "The receiving chat marks the message read by acknowledging or replying. Do not resend or claim the session ended."
                 if wake and wake["state"] == "queued" else
                 "Saved unread; not woken: no reply expected. The receiving session can collect it on its next inbox read, "
                 "then acknowledge after reading. Do not resend." if wake and wake["state"] == "no_reply_expected" else
