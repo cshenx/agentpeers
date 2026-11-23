@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Report when an unverified named send saved nothing for delivery and show the full session ID if complete local discovery found one exact match. When desktop IPC is refused or missing, save a named reply unread to the original Codex sender's exact mailbox if it is the sole match in complete local discovery. The receipt preserves the transport failure. The existing opt-in wake rules apply.
+
 ## 0.11.1 — hold no-reply messages without waking
 
 - New messages with `expects=none` to a Codex chat with wake on and no live route stay unread without queuing a wake. The receipt says `saved unread; not woken: no reply expected`. Replies still queue a wake regardless of `expects`. The next inbox read collects held messages, including when a later message queues a wake.

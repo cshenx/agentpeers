@@ -48,7 +48,7 @@ class ReceiverStates(unittest.TestCase):
                 self.assertEqual(row['transport_status'], 'unavailable')
                 self.assertIsNone(row['recipient'])
                 self.assertIn('state is unknown', row['destination_note'])
-                self.assertIn('nothing will automatically arrive', row['destination_note'])
+                self.assertIn('nothing was saved for delivery', row['destination_note'])
                 self.assertEqual(bridge.get(row['id'])['detail'], row['detail'])
                 desktop.return_value.__enter__.return_value.send.assert_not_called()
 

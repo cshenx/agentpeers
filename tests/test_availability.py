@@ -79,7 +79,7 @@ class AvailabilityJourney(unittest.TestCase):
                 self.assertEqual(failed['detail']['route_failure']['code'], 'name_unreachable')
                 self.assertEqual(failed['detail']['route_failure']['candidates'][0]['code'], 'desktop_owner_missing')
                 self.assertIsNone(failed['read_at'])
-                self.assertIn('nothing will automatically arrive later', failed['destination_note'])
+                self.assertIn('nothing was saved for delivery', failed['destination_note'])
                 desktop.return_value.__enter__.return_value.send.assert_not_called()
 
     def test_saved_failure_has_destination_evidence_and_separate_sender_route(self):

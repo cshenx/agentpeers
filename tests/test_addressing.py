@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 import uuid
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from agentpeers import native
@@ -55,6 +56,120 @@ class NamedJourney(unittest.TestCase):
         for p in reversed(self.patches): p.stop()
         self.env.stop()
         self.temp.cleanup()
+
+    @contextmanager
+    def desktop_connect_error(self, error, app=None):
+        with patch.object(native, 'owned_path'), patch.object(native.socket, 'socket') as socket, \
+             patch.object(native, 'codex_desktop_app', return_value=app):
+            socket.return_value.connect.side_effect = error
+            yield socket.return_value
+            socket.return_value.sendall.assert_not_called()
+
+    def test_unverified_unique_name_offers_exact_id_for_new_send(self):
+        self.codex[:] = [session(C, 'builder', 'desktop-or-stored')]
+        with self.desktop_connect_error(ConnectionRefusedError('fixture')):
+            row = dispatch('send_message', {'to': 'builder', 'message': 'check', 'scope': SCOPE}, actor=A)
+        self.assertEqual(row['transport_status'], 'unavailable')
+        self.assertIsNone(row['recipient'])
+        self.assertFalse(row['mailbox_available'])
+        self.assertFalse(row['detail']['queued'])
+        self.assertIn('No recipient mailbox assigned; nothing was saved for delivery', row['destination_note'])
+        self.assertIn('For a new send, you may explicitly choose the full session ID ' + C, row['destination_note'])
+        self.assertEqual(self.bridge.inbox(C), [])
+        self.mocks[2].assert_not_called()
+
+    def test_unverified_duplicate_name_offers_no_unique_id(self):
+        self.codex[:] = [session(C, 'builder', 'desktop-or-stored'), session(C2, 'builder')]
+        with self.desktop_connect_error(ConnectionRefusedError('fixture')):
+            row = self.bridge.send(A, 'builder', 'check', SCOPE)
+        self.assertFalse(row['mailbox_available'])
+        self.assertIn('nothing was saved for delivery', row['destination_note'])
+        self.assertNotIn('full session ID', row['destination_note'])
+        self.assertNotIn('exact_candidate_id', row['detail']['route_failure'])
+        self.mocks[2].assert_not_called()
+
+    def test_named_reply_is_saved_and_pinned_during_desktop_connection_outage(self):
+        from agentpeers import codex_wake
+        codex_wake.turn_on(self.bridge.db, C)
+        inspected = {'version': '26.1117.31558', 'path': '/fixture/ChatGPT.app'}
+        for error, app, code in ((ConnectionRefusedError('fixture'), None, 'desktop_connection_unavailable'),
+                                 (FileNotFoundError('fixture'), inspected, 'desktop_ipc_unsupported')):
+            with self.subTest(code=code):
+                self.codex[:] = [session(C, 'builder')]
+                request = self.bridge.send(C, 'reviewer', 'check', SCOPE, decision_id='fixture decision')
+                self.codex[:] = [session(C, 'builder', 'desktop-or-stored')]
+                with self.desktop_connect_error(error, app) as socket, \
+                     patch.object(codex_wake, 'run_wake', return_value=('queued', {})) as wake:
+                    reply = dispatch('reply', {'id': request['id'], 'message': 'done'}, actor=A)
+                    socket.connect.assert_called_once()
+                    wake.assert_called_once_with(C)
+
+                self.assertEqual(reply['requested_to'], 'builder')
+                self.assertEqual(reply['recipient'], C)
+                self.assertIsNone(reply['recipient_name'])
+                self.assertEqual(reply['reply_to'], request['id'])
+                self.assertEqual(reply['scope'], SCOPE)
+                self.assertEqual(reply['decision_id'], 'fixture decision')
+                self.assertEqual(reply['replacement'], {})
+                self.assertEqual(reply['delivery'], 'unavailable')
+                self.assertEqual(reply['transport_status'], 'unavailable')
+                self.assertTrue(reply['mailbox_available'])
+                self.assertEqual(reply['detail']['route_failure']['code'], code)
+                self.assertEqual(reply['wake']['state'], 'queued')
+                self.assertEqual(reply['receipt'], 'saved unread; wake queued')
+                parent = self.bridge.get(request['id'])
+                self.assertEqual(parent['read_by'], A)
+                self.assertEqual(parent['replies'][0]['id'], reply['id'])
+
+                self.codex[:] = [session(C2, 'builder')]
+                self.assertEqual(self.bridge.inbox(C2), [])
+                with self.assertRaises(ValueError):
+                    self.bridge.ack(reply['id'], C2)
+                self.assertEqual(self.bridge.inbox(C, unread=True)[0]['id'], reply['id'])
+                read = self.bridge.ack(reply['id'], C)
+                self.assertEqual(read['delivery'], 'read')
+                self.assertEqual(read['transport_status'], 'unavailable')
+                self.assertIn('Read from the mailbox', read['delivery_note'])
+        self.mocks[2].assert_not_called()
+
+    def test_named_reply_outage_does_not_override_duplicates_or_replacements(self):
+        request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
+        original = session(C, 'builder', 'desktop-or-stored')
+        replacement = session(C2, 'builder', 'desktop-or-stored')
+        for rows in ([original, replacement], [replacement]):
+            with self.subTest(rows=rows), self.desktop_connect_error(ConnectionRefusedError('fixture')):
+                self.codex[:] = rows
+                reply = self.bridge.reply(request['id'], A, 'done')
+                self.assertFalse(reply['mailbox_available'])
+                self.assertIsNone(reply['recipient'])
+        self.assertEqual(self.bridge.inbox(C), [])
+        self.mocks[2].assert_not_called()
+
+    def test_named_reply_requires_complete_inventory(self):
+        request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
+        self.mocks[0].side_effect = native.Unavailable('fixture discovery timed out', code='codex_discovery_timeout')
+        with patch.object(native, 'Desktop') as desktop:
+            send = self.bridge.send(A, 'reviewer', 'check', SCOPE)
+            reply = self.bridge.reply(request['id'], A, 'done')
+            desktop.assert_not_called()
+        for row in (send, reply):
+            self.assertFalse(row['mailbox_available'])
+            self.assertNotIn('full session ID', row['destination_note'])
+        self.mocks[2].assert_not_called()
+
+    def test_named_reply_does_not_recover_from_other_desktop_failures(self):
+        request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
+        self.codex[:] = [session(C, 'builder', 'desktop-or-stored')]
+        for error in (TimeoutError('connect timed out'), PermissionError('connect denied'), OSError('generic')):
+            with self.subTest(error=error), self.desktop_connect_error(error):
+                self.assertFalse(self.bridge.reply(request['id'], A, 'done')['mailbox_available'])
+        for error in (ValueError('wrong socket owner'), native.Unavailable('no owner', code='desktop_owner_missing'),
+                      native.Unavailable('owner timed out', code='desktop_owner_discovery_failed')):
+            with self.subTest(error=error), patch.object(native, 'Desktop') as desktop, \
+                 patch.object(native, 'desktop_wake_enabled', return_value=False):
+                desktop.return_value.__enter__.side_effect = error
+                self.assertFalse(self.bridge.reply(request['id'], A, 'done')['mailbox_available'])
+        self.mocks[2].assert_not_called()
 
     def test_unique_name_records_logical_and_actual_addresses_in_mcp(self):
         row = dispatch('send_message', {'to':'reviewer', 'message':'check', 'scope':SCOPE}, actor=C)

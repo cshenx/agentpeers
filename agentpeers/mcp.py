@@ -58,7 +58,7 @@ TOOLS = [
       "scope": {"type": "string", "description": "Describe the work the human already authorized in this chat. Use that existing context; do not request duplicate approval or invent permission."},
       "sender": {"type": "string"}, "id": {"type": "string"},
       "decision_id": {"type": "string", "maxLength": 200}, "allow_question": {"type": "boolean"}, **OPTIONS}, ["to", "message", "scope"]),
-    ("reply", "Reply preserving scope. Named conversations follow the sender name across replacement; UUID routes stay pinned. Records consumption.",
+    ("reply", "Reply preserving scope and recording consumption. Exact-ID replies stay pinned. Named replies normally follow the sender name. A desktop connection outage can leave a reply saved to the original Codex sender's exact mailbox. Check mailbox_available and delivery_note.",
      {"id": {"type": "string"}, "message": {"type": "string"}, "sender": {"type": "string"}, **OPTIONS}, ["id", "message"]),
     ("acknowledge", "Record that this receiving agent actually read a message. Never acknowledge on behalf of a peer.",
      {"id": {"type": "string"}, "sender": {"type": "string"}}, ["id"]),
