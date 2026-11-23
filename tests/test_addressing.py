@@ -20,7 +20,7 @@ SCOPE = 'Human authorized a bounded name-addressing test'
 
 def session(ident, name, surface='shared-server'):
     return dict(id=ident, runtime=ident.split(':')[0], name=name,
-                name_address=name, surface=surface, cwd='/fixture')
+                name_address=name, surface=surface, cwd='/fixture', name_inventory_complete=True)
 
 
 
@@ -144,6 +144,19 @@ class NamedJourney(unittest.TestCase):
                 self.assertIsNone(reply['recipient'])
         self.assertEqual(self.bridge.inbox(C), [])
         self.mocks[2].assert_not_called()
+
+    def test_unverified_shared_server_blocks_exact_candidate_hint_and_reply_recovery(self):
+        request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
+        self.codex[:] = [session(C, 'builder', 'desktop-or-stored')]
+        self.codex[0]['name_inventory_complete'] = False
+        with self.desktop_connect_error(ConnectionRefusedError('fixture')), \
+             patch('agentpeers.core.codex_wake.after_unavailable') as wake:
+            new = self.bridge.send(A, 'builder', 'check', SCOPE)
+            reply = self.bridge.reply(request['id'], A, 'done')
+        for row in (new, reply):
+            self.assertFalse(row['mailbox_available'])
+            self.assertNotIn('exact_candidate_id', row['detail']['route_failure'])
+        wake.assert_not_called()
 
     def test_named_reply_requires_complete_inventory(self):
         request = self.bridge.send(C, 'reviewer', 'check', SCOPE)

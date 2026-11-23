@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.11.2 — recover replies during desktop connection outages
 
 - Report when an unverified named send saved nothing for delivery and show the full session ID if complete local discovery found one exact match. When desktop IPC is refused or missing, save a named reply unread to the original Codex sender's exact mailbox if it is the sole match in complete local discovery. The receipt preserves the transport failure. The existing opt-in wake rules apply.
+
+- Direct woken chats to use the AgentPeers reply tool for authorized reply requests.
 
 ## 0.11.1 — hold no-reply messages without waking
 

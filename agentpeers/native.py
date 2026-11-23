@@ -67,9 +67,12 @@ def claude_sessions():
                 raise Unavailable("cannot verify Claude processes from this sandbox; use host access") from exc
             # A stale registry entry must not address a recycled PID.
             if data.get("procStart"):
-                start = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
-                                       capture_output=True, text=True, timeout=3,
-                                       env={**os.environ, "TZ": "UTC", "LC_ALL": "C"})
+                try:
+                    start = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
+                                           capture_output=True, text=True, timeout=3,
+                                           env={**os.environ, "TZ": "UTC", "LC_ALL": "C"})
+                except subprocess.TimeoutExpired as exc:
+                    raise Unavailable("Claude process identity check timed out; discovery is incomplete") from exc
                 if start.returncode != 0:
                     try:
                         os.kill(pid, 0)
@@ -261,10 +264,14 @@ def codex_sessions():
     # otherwise a duplicate live name could be mistaken for a unique address.
     rows = {row["id"]: row for row in rows}
     live = set()
+    name_inventory_complete = True
     client = SharedServer()
     try:
         client.__enter__()
-    except (Unavailable, OSError, ValueError, KeyError):
+    except (Unavailable, OSError, ValueError, KeyError) as exc:
+        # A missing socket means there is no advertised shared server. Other
+        # failures may hide a loaded name that has never been saved.
+        name_inventory_complete = isinstance(exc, FileNotFoundError) or isinstance(exc.__cause__, FileNotFoundError)
         client = None
     if client is not None:
         try:
@@ -278,7 +285,8 @@ def codex_sessions():
     return [{"id": "codex:" + row["id"], "runtime": "codex",
              "surface": "shared-server" if row["id"] in live else "desktop-or-stored",
              "name": row.get("name") or row.get("preview") or row["id"], "name_address": row.get("name"),
-             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else stored}
+             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else stored,
+             "name_inventory_complete": name_inventory_complete}
             for row in rows]
 
 

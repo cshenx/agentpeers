@@ -4,9 +4,11 @@ import json
 import os
 import socket
 import struct
+import subprocess
 import tempfile
 import time
 import unittest
+from pathlib import Path
 import uuid
 from unittest.mock import patch
 
@@ -177,6 +179,20 @@ class TerminalJourney(unittest.TestCase):
 
 
 class NativeDiscovery(unittest.TestCase):
+    def test_claude_identity_timeout_fails_discovery_instead_of_hiding_a_live_name(self):
+        with tempfile.TemporaryDirectory() as home:
+            sessions = Path(home) / "sessions"
+            sessions.mkdir(mode=0o700)
+            (sessions / "23456.json").write_text(json.dumps({
+                "pid": 23456, "procStart": "fixture start", "name": "duplicate",
+                "sessionId": A.split(":")[1], "messagingSocketPath": "/fixture/claude.sock",
+            }))
+            with patch.object(native, "claude_home", return_value=Path(home)), \
+                 patch.object(native.os, "kill"), \
+                 patch.object(native.subprocess, "run", side_effect=subprocess.TimeoutExpired("ps", 3)):
+                with self.assertRaisesRegex(native.Unavailable, "discovery is incomplete"):
+                    native.claude_sessions()
+
     def test_named_fresh_loaded_terminal_is_included_before_first_saved_turn(self):
         with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:
             saved.return_value.__enter__.return_value.call.return_value = {"data": []}
@@ -189,6 +205,18 @@ class NativeDiscovery(unittest.TestCase):
             self.assertEqual(rows[0]["surface"], "shared-server")
             self.assertEqual(shared.return_value.call.call_args.args,
                              ("thread/read", {"threadId": C.split(":")[1], "includeTurns": False}))
+
+    def test_stored_names_report_failed_shared_server_discovery_as_incomplete(self):
+        thread = {"id": C.split(":")[1], "name": "stored"}
+        for error, complete in [(TimeoutError("fixture timeout"), False),
+                                (FileNotFoundError("fixture socket absent"), True)]:
+            with self.subTest(error=type(error).__name__), patch.object(native, "AppServer") as saved, \
+                 patch.object(native, "SharedServer") as shared, patch.object(native, "desktop_unreachable_note"):
+                saved.return_value.__enter__.return_value.call.return_value = {"data": [thread]}
+                unavailable = native.Unavailable("fixture shared server unavailable")
+                unavailable.__cause__ = error
+                shared.return_value.__enter__.side_effect = unavailable
+                self.assertIs(native.codex_sessions()[0]["name_inventory_complete"], complete)
 
     def test_missing_loaded_metadata_fails_closed_instead_of_hiding_possible_duplicate(self):
         with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:

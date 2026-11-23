@@ -80,7 +80,8 @@ def resolve_name(name, rows=None):
     if not reachable or unknown:
         # A timed-out duplicate can still be live. Never select another holder
         # or turn a missing response into a claim that the session is offline.
-        exact_candidate = next(iter(candidates)) if unknown and len(candidates) == 1 else None
+        candidate = next(iter(candidates.values())) if unknown and len(candidates) == 1 else None
+        exact_candidate = candidate["id"] if candidate and candidate.get("name_inventory_complete") else None
         raise native.Unavailable("No unique receive route was verified for name " + repr(name) +
                                  "; no message submitted or queued. " +
                                  ("One or more matching receivers could not be checked; their session state is unknown. " if unknown else "") +
