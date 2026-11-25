@@ -100,9 +100,12 @@ def claude_sessions():
                           "name": data.get("name") or str(pid), "name_address": data.get("name"), "cwd": data.get("cwd"),
                           "status": data.get("status", "unknown"), "pid": pid,
                           "socket": str(sock), "version": data.get("version")})
-        except PermissionError as exc:
-            raise Unavailable("cannot read Claude's advertised registry; use host access") from exc
-        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        except (FileNotFoundError, ProcessLookupError):
+            # The advertised entry, socket, or process disappeared during discovery.
+            continue
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise Unavailable("cannot read Claude's advertised registry; discovery is incomplete: " + str(exc)) from exc
+        except (ValueError, KeyError, TypeError):
             continue
     return found
 

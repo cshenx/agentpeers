@@ -1,4 +1,5 @@
 """Terminal consumer routing and the exact native wire contract."""
+import errno
 import io
 import json
 import os
@@ -203,6 +204,22 @@ class NativeDiscovery(unittest.TestCase):
             self.assertEqual(named["status"], "submitted")
             self.assertEqual(send.call_count, 2)
             wake.assert_not_called()
+
+    def test_claude_registry_record_io_error_blocks_named_delivery(self):
+        codex = {"id": C, "runtime": "codex", "name_address": "builder", "surface": "shared-server"}
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"AGENTPEERS_HOME": home}), \
+             patch.object(native, "claude_home", return_value=Path(home)), \
+             patch.object(native, "codex_sessions", return_value=[codex]), \
+             patch.object(native, "send_codex") as send, Bridge() as bridge:
+            sessions = Path(home) / "sessions"
+            sessions.mkdir(mode=0o700)
+            (sessions / "23456.json").touch()
+            with patch.object(Path, "read_text", side_effect=OSError(errno.EIO, "fixture read failed")):
+                problem = bridge.send(A, "builder", "check", SCOPE)
+            self.assertEqual(problem["status"], "unavailable")
+            self.assertFalse(problem["mailbox_available"])
+            self.assertIn("discovery is incomplete", problem["detail"]["reason"])
+            send.assert_not_called()
 
     def test_shared_handshake_timeout_blocks_named_send_with_no_stored_codex_rows(self):
         claude = {"id": A, "runtime": "claude", "name_address": "reviewer"}
