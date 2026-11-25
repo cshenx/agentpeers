@@ -20,7 +20,7 @@ SCOPE = 'Human authorized a bounded name-addressing test'
 
 def session(ident, name, surface='shared-server'):
     return dict(id=ident, runtime=ident.split(':')[0], name=name,
-                name_address=name, surface=surface, cwd='/fixture', name_inventory_complete=True)
+                name_address=name, surface=surface, cwd='/fixture')
 
 
 
@@ -125,6 +125,9 @@ class NamedJourney(unittest.TestCase):
                 self.assertEqual(self.bridge.inbox(C2), [])
                 with self.assertRaises(ValueError):
                     self.bridge.ack(reply['id'], C2)
+                status = dispatch('message_status', {'id': reply['id']}, actor=C2)
+                self.assertEqual(status['body'], 'done')
+                self.assertIsNone(status['read_at'])
                 self.assertEqual(self.bridge.inbox(C, unread=True)[0]['id'], reply['id'])
                 read = self.bridge.ack(reply['id'], C)
                 self.assertEqual(read['delivery'], 'read')
@@ -145,26 +148,15 @@ class NamedJourney(unittest.TestCase):
         self.assertEqual(self.bridge.inbox(C), [])
         self.mocks[2].assert_not_called()
 
-    def test_unverified_shared_server_blocks_exact_candidate_hint_and_reply_recovery(self):
-        request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
-        self.codex[:] = [session(C, 'builder', 'desktop-or-stored')]
-        self.codex[0]['name_inventory_complete'] = False
-        with self.desktop_connect_error(ConnectionRefusedError('fixture')), \
-             patch('agentpeers.core.codex_wake.after_unavailable') as wake:
-            new = self.bridge.send(A, 'builder', 'check', SCOPE)
-            reply = self.bridge.reply(request['id'], A, 'done')
-        for row in (new, reply):
-            self.assertFalse(row['mailbox_available'])
-            self.assertNotIn('exact_candidate_id', row['detail']['route_failure'])
-        wake.assert_not_called()
-
     def test_named_reply_requires_complete_inventory(self):
         request = self.bridge.send(C, 'reviewer', 'check', SCOPE)
         self.mocks[0].side_effect = native.Unavailable('fixture discovery timed out', code='codex_discovery_timeout')
-        with patch.object(native, 'Desktop') as desktop:
+        with patch.object(native, 'Desktop') as desktop, \
+             patch('agentpeers.core.codex_wake.after_unavailable') as wake:
             send = self.bridge.send(A, 'reviewer', 'check', SCOPE)
             reply = self.bridge.reply(request['id'], A, 'done')
             desktop.assert_not_called()
+            wake.assert_not_called()
         for row in (send, reply):
             self.assertFalse(row['mailbox_available'])
             self.assertNotIn('full session ID', row['destination_note'])

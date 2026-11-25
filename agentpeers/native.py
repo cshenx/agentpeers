@@ -51,8 +51,17 @@ def claude_home():
 
 
 def claude_sessions():
+    registry = claude_home() / "sessions"
+    try:
+        paths = list(registry.iterdir())
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise Unavailable("cannot enumerate Claude's advertised registry; discovery is incomplete: " + str(exc)) from exc
     found = []
-    for path in (claude_home() / "sessions").glob("*.json"):
+    for path in paths:
+        if not path.name.endswith(".json"):
+            continue
         try:
             owned_path(path, stat.S_ISREG)
             if path.stat().st_size > MAX_BYTES:
@@ -264,16 +273,15 @@ def codex_sessions():
     # otherwise a duplicate live name could be mistaken for a unique address.
     rows = {row["id"]: row for row in rows}
     live = set()
-    name_inventory_complete = True
     client = SharedServer()
     try:
         client.__enter__()
-    except (Unavailable, OSError, ValueError, KeyError) as exc:
-        # A missing socket means there is no advertised shared server. Other
-        # failures may hide a loaded name that has never been saved.
-        name_inventory_complete = isinstance(exc, FileNotFoundError) or isinstance(exc.__cause__, FileNotFoundError)
-        client = None
-    if client is not None:
+    except (Unavailable, FileNotFoundError) as exc:
+        # Only a missing socket establishes absence. A failed handshake can
+        # hide a loaded name even when there are no stored rows.
+        if not isinstance(exc, FileNotFoundError) and not isinstance(exc.__cause__, FileNotFoundError):
+            raise
+    else:
         try:
             live = loaded_threads(client)
             for ident in live - rows.keys():
@@ -285,8 +293,7 @@ def codex_sessions():
     return [{"id": "codex:" + row["id"], "runtime": "codex",
              "surface": "shared-server" if row["id"] in live else "desktop-or-stored",
              "name": row.get("name") or row.get("preview") or row["id"], "name_address": row.get("name"),
-             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else stored,
-             "name_inventory_complete": name_inventory_complete}
+             "cwd": row.get("cwd"), "status": "live shared server" if row["id"] in live else stored}
             for row in rows]
 
 

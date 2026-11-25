@@ -179,6 +179,68 @@ class TerminalJourney(unittest.TestCase):
 
 
 class NativeDiscovery(unittest.TestCase):
+    def test_unreadable_claude_registry_blocks_named_send_but_absent_registry_does_not(self):
+        codex = {"id": C, "runtime": "codex", "name_address": "builder", "surface": "shared-server"}
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"AGENTPEERS_HOME": home}), \
+             patch.object(native, "claude_home", return_value=Path(home)), \
+             patch.object(native, "codex_sessions", return_value=[codex]) as discover_codex, \
+             patch.object(native, "send_codex", return_value={"transport": "fixture"}) as send, \
+             patch("agentpeers.core.codex_wake.after_unavailable") as wake, Bridge() as bridge:
+            with patch.object(Path, "iterdir", side_effect=PermissionError("fixture registry denied")):
+                blocked = bridge.send(A, "builder", "check", SCOPE)
+                self.assertEqual(blocked["status"], "unavailable")
+                self.assertFalse(blocked["mailbox_available"])
+                self.assertIn("Claude", blocked["detail"]["reason"])
+                discover_codex.assert_not_called()
+                send.assert_not_called()
+                exact = bridge.send(A, C, "exact check", SCOPE)
+                self.assertEqual(exact["recipient"], C)
+                self.assertEqual(exact["status"], "submitted")
+
+            self.assertFalse((Path(home) / "sessions").exists())
+            named = bridge.send(A, "builder", "named check", SCOPE)
+            self.assertEqual(named["recipient"], C)
+            self.assertEqual(named["status"], "submitted")
+            self.assertEqual(send.call_count, 2)
+            wake.assert_not_called()
+
+    def test_shared_handshake_timeout_blocks_named_send_with_no_stored_codex_rows(self):
+        claude = {"id": A, "runtime": "claude", "name_address": "reviewer"}
+        with tempfile.TemporaryDirectory() as home, \
+             patch.dict(os.environ, {"AGENTPEERS_HOME": home, "CODEX_HOME": home}), \
+             patch.object(native, "stored_codex_sessions", return_value=[]), \
+             patch.object(native, "claude_sessions", return_value=[claude]), \
+             patch.object(native, "send_claude", return_value={"transport": "fixture"}) as send, \
+             patch.object(native, "Desktop") as desktop, \
+             patch("agentpeers.core.codex_wake.after_unavailable") as wake, Bridge() as bridge:
+            # Supply a socket path and stall the actual handshake on a fixture socket.
+            control = Path(home) / "app-server-control"
+            control.mkdir(mode=0o700)
+            socket_path = control / "app-server-control.sock"
+            socket_path.touch()
+            with patch.object(native, "owned_path", side_effect=lambda path, kind: path), \
+                 patch.object(socket, "socket") as constructor:
+                connection = constructor.return_value
+                connection.recv.side_effect = TimeoutError("fixture handshake timed out")
+                blocked = bridge.send(C, "reviewer", "check", SCOPE)
+                self.assertEqual(blocked["status"], "unavailable")
+                self.assertFalse(blocked["mailbox_available"])
+                self.assertIn("fixture handshake timed out", blocked["detail"]["reason"])
+                connection.sendall.assert_called_once()
+                connection.close.assert_called_once()
+                send.assert_not_called()
+                exact = bridge.send(C, A, "exact check", SCOPE)
+                self.assertEqual(exact["recipient"], A)
+                self.assertEqual(exact["status"], "submitted")
+
+            socket_path.unlink()
+            named = bridge.send(C, "reviewer", "named check", SCOPE)
+            self.assertEqual(named["recipient"], A)
+            self.assertEqual(named["status"], "submitted")
+            self.assertEqual(send.call_count, 2)
+            desktop.assert_not_called()
+            wake.assert_not_called()
+
     def test_claude_identity_timeout_fails_discovery_instead_of_hiding_a_live_name(self):
         with tempfile.TemporaryDirectory() as home:
             sessions = Path(home) / "sessions"
@@ -206,17 +268,15 @@ class NativeDiscovery(unittest.TestCase):
             self.assertEqual(shared.return_value.call.call_args.args,
                              ("thread/read", {"threadId": C.split(":")[1], "includeTurns": False}))
 
-    def test_stored_names_report_failed_shared_server_discovery_as_incomplete(self):
+    def test_shared_server_timeout_blocks_discovery_even_with_stored_names(self):
         thread = {"id": C.split(":")[1], "name": "stored"}
-        for error, complete in [(TimeoutError("fixture timeout"), False),
-                                (FileNotFoundError("fixture socket absent"), True)]:
-            with self.subTest(error=type(error).__name__), patch.object(native, "AppServer") as saved, \
-                 patch.object(native, "SharedServer") as shared, patch.object(native, "desktop_unreachable_note"):
-                saved.return_value.__enter__.return_value.call.return_value = {"data": [thread]}
-                unavailable = native.Unavailable("fixture shared server unavailable")
-                unavailable.__cause__ = error
-                shared.return_value.__enter__.side_effect = unavailable
-                self.assertIs(native.codex_sessions()[0]["name_inventory_complete"], complete)
+        with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:
+            saved.return_value.__enter__.return_value.call.return_value = {"data": [thread]}
+            unavailable = native.Unavailable("fixture shared server unavailable")
+            unavailable.__cause__ = TimeoutError("fixture timeout")
+            shared.return_value.__enter__.side_effect = unavailable
+            with self.assertRaisesRegex(native.Unavailable, "fixture shared server unavailable"):
+                native.codex_sessions()
 
     def test_missing_loaded_metadata_fails_closed_instead_of_hiding_possible_duplicate(self):
         with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:

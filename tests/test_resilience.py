@@ -65,7 +65,7 @@ class Resilience(unittest.TestCase):
         row = {'id': C.split(':')[1], 'name': 'fixture', 'cwd': '/fixture'}
         with patch.object(native, 'stored_codex_sessions', side_effect=[timed_out(), [row]]) as stored, \
              patch.object(native, 'SharedServer') as shared, patch.object(native, 'send_codex') as send:
-            shared.return_value.__enter__.side_effect = native.Unavailable('no shared server')
+            shared.return_value.__enter__.side_effect = FileNotFoundError('no shared server socket')
             result = native.codex_sessions()
         self.assertEqual(result[0]['id'], C)
         self.assertEqual(stored.call_args_list, [call(12), call(6)])
@@ -80,7 +80,7 @@ class Resilience(unittest.TestCase):
             second.__exit__ = Mock(return_value=False)
             second.call.return_value = {'data': [{'id': C.split(':')[1], 'name': 'fixture'}]}
             server.side_effect = [first, second]
-            shared.return_value.__enter__.side_effect = native.Unavailable('no shared server')
+            shared.return_value.__enter__.side_effect = FileNotFoundError('no shared server socket')
             self.assertEqual(native.codex_sessions()[0]['id'], C)
             self.assertEqual(server.call_count, 2)
             second.call.assert_called_once_with('thread/list', {'limit': 100, 'archived': False})
@@ -171,7 +171,7 @@ for line in sys.stdin:
             first.call.side_effect = [{'data': [{'id': 'old-partial'}], 'nextCursor': 'page2'}, timed_out()]
             second.call.return_value = {'data': [{'id': C.split(':')[1], 'name': 'fixture'}]}
             saved.side_effect = [first, second]
-            shared.return_value.__enter__.side_effect = native.Unavailable('no shared server')
+            shared.return_value.__enter__.side_effect = FileNotFoundError('no shared server socket')
             result = native.codex_sessions()
         self.assertEqual([row['id'] for row in result], [C])
 

@@ -4,6 +4,8 @@
 
 - Report when an unverified named send saved nothing for delivery and show the full session ID if complete local discovery found one exact match. When desktop IPC is refused or missing, save a named reply unread to the original Codex sender's exact mailbox if it is the sole match in complete local discovery. The receipt preserves the transport failure. The existing opt-in wake rules apply.
 
+- Block routing by name when the Codex shared-server handshake fails or the Claude registry cannot be read. Discovery treats a missing shared-server socket or registry as absent.
+
 - Direct woken chats to use the AgentPeers reply tool for authorized reply requests.
 
 ## 0.11.1 — hold no-reply messages without waking
