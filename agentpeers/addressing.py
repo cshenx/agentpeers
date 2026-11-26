@@ -52,6 +52,7 @@ def resolve_name(name, rows=None):
     candidates = {r["id"]: r for r in rows if native_name(r) == name}
     reachable = []
     failures = []
+    desktop_connection_outage = False
     for row in candidates.values():
         if row["runtime"] == "claude" or row.get("surface") == "shared-server":
             reachable.append(row)
@@ -61,25 +62,33 @@ def resolve_name(name, rows=None):
                     client.owner(row["id"].split(":", 1)[1])
                 reachable.append(row)
             except (native.Unavailable, OSError, ValueError, KeyError) as exc:
-                if (getattr(exc, "diagnostics", {}).get("code") == "desktop_owner_missing"
-                        and native.desktop_wake_enabled()):
+                diagnostics = getattr(exc, "diagnostics", {})
+                code = diagnostics.get("code")
+                if code == "desktop_owner_missing" and native.desktop_wake_enabled():
                     # Discovery stays read-only. Send will open the exact resolved
                     # chat. An unloaded duplicate is now also an eligible holder.
                     reachable.append(row)
                     continue
-                failures.append({"session_id": row["id"], "reason": str(exc),
-                                 **getattr(exc, "diagnostics", {})})
-                continue
+                failures.append({"session_id": row["id"], "reason": str(exc), **diagnostics})
+                # Other socket errors can share the connection-unavailable code.
+                if len(candidates) == 1 and row["runtime"] == "codex":
+                    desktop_connection_outage = (
+                        code in ("desktop_connection_unavailable", "desktop_ipc_unsupported")
+                        and isinstance(exc.__cause__, (ConnectionRefusedError, FileNotFoundError))
+                    )
     unknown = [f for f in failures if f.get("code") != "desktop_owner_missing"]
     if not reachable or unknown:
         # A timed-out duplicate can still be live. Never select another holder
         # or turn a missing response into a claim that the session is offline.
+        exact_candidate = next(iter(candidates)) if unknown and len(candidates) == 1 else None
         raise native.Unavailable("No unique receive route was verified for name " + repr(name) +
                                  "; no message submitted or queued. " +
                                  ("One or more matching receivers could not be checked; their session state is unknown. " if unknown else "") +
                                  "This does not prove a session ended or the app is closed. No automatic retry.",
                                  code="name_resolution_unverified" if unknown else "name_unreachable",
-                                 candidates=failures, verified_candidates=[r["id"] for r in reachable])
+                                 candidates=failures, verified_candidates=[r["id"] for r in reachable],
+                                 **({"exact_candidate_id": exact_candidate} if is_session_id(exact_candidate) else {}),
+                                 **({"desktop_connection_outage": True} if desktop_connection_outage else {}))
     if len(reachable) != 1:
         choices = "; ".join(r["id"] + " (" + str(r.get("cwd") or "unknown directory") + ")"
                             for r in reachable)

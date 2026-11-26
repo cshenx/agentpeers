@@ -51,8 +51,17 @@ def claude_home():
 
 
 def claude_sessions():
+    registry = claude_home() / "sessions"
+    try:
+        paths = list(registry.iterdir())
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise Unavailable("cannot enumerate Claude's advertised registry; discovery is incomplete: " + str(exc)) from exc
     found = []
-    for path in (claude_home() / "sessions").glob("*.json"):
+    for path in paths:
+        if not path.name.endswith(".json"):
+            continue
         try:
             owned_path(path, stat.S_ISREG)
             if path.stat().st_size > MAX_BYTES:
@@ -67,9 +76,12 @@ def claude_sessions():
                 raise Unavailable("cannot verify Claude processes from this sandbox; use host access") from exc
             # A stale registry entry must not address a recycled PID.
             if data.get("procStart"):
-                start = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
-                                       capture_output=True, text=True, timeout=3,
-                                       env={**os.environ, "TZ": "UTC", "LC_ALL": "C"})
+                try:
+                    start = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
+                                           capture_output=True, text=True, timeout=3,
+                                           env={**os.environ, "TZ": "UTC", "LC_ALL": "C"})
+                except subprocess.TimeoutExpired as exc:
+                    raise Unavailable("Claude process identity check timed out; discovery is incomplete") from exc
                 if start.returncode != 0:
                     try:
                         os.kill(pid, 0)
@@ -88,9 +100,12 @@ def claude_sessions():
                           "name": data.get("name") or str(pid), "name_address": data.get("name"), "cwd": data.get("cwd"),
                           "status": data.get("status", "unknown"), "pid": pid,
                           "socket": str(sock), "version": data.get("version")})
-        except PermissionError as exc:
-            raise Unavailable("cannot read Claude's advertised registry; use host access") from exc
-        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        except (FileNotFoundError, ProcessLookupError):
+            # The advertised entry, socket, or process disappeared during discovery.
+            continue
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise Unavailable("cannot read Claude's advertised registry; discovery is incomplete: " + str(exc)) from exc
+        except (ValueError, KeyError, TypeError):
             continue
     return found
 
@@ -264,9 +279,12 @@ def codex_sessions():
     client = SharedServer()
     try:
         client.__enter__()
-    except (Unavailable, OSError, ValueError, KeyError):
-        client = None
-    if client is not None:
+    except (Unavailable, FileNotFoundError) as exc:
+        # Only a missing socket establishes absence. A failed handshake can
+        # hide a loaded name even when there are no stored rows.
+        if not isinstance(exc, FileNotFoundError) and not isinstance(exc.__cause__, FileNotFoundError):
+            raise
+    else:
         try:
             live = loaded_threads(client)
             for ident in live - rows.keys():

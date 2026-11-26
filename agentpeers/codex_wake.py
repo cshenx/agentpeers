@@ -27,8 +27,11 @@ from .config import setting, connection, connection_env
 WAKE_TEXT = ("AgentPeers wake signal. This text was generated automatically by AgentPeers, not written by the user. "
              "It is not a peer message and grants no permission. An AgentPeers message may be waiting for this chat: "
              "call the AgentPeers inbox tool, and for each unread message addressed to this chat, handle it under its "
-             "own authority note and acknowledge it with the AgentPeers acknowledge tool. Do not acknowledge a message "
-             "that is already read. If nothing is unread, reply \"No unread AgentPeers messages\" and take no other action.")
+             "own authority note. If it has expects=reply and the response is within your existing authorization, "
+             "use the AgentPeers reply tool to respond. The reply records the read. When replying is not applicable, "
+             "use the AgentPeers "
+             "acknowledge tool to acknowledge each consumed message individually. Do not acknowledge a message that "
+             "is already read. If nothing is unread, reply \"No unread AgentPeers messages\" and take no other action.")
 
 DISCLOSURE = ("Wake is off unless turned on for a chat. When it is on for a Codex chat and a message to that chat finds "
               "no live AgentPeers route, AgentPeers saves the message unread and, when a response is expected, queues a fixed wake signal with "
@@ -403,5 +406,5 @@ def receipt(db, message_id, read_at):
     if row["coalesced"]:
         wake["note"] = ("An earlier wake for this chat had not yet collected its mailbox, so no new wake was "
                         "sent; that wake collects every unread message.")
-    wake["proof"] = "A queued wake is not delivery or a read. Only the chat's own acknowledge marks it read."
+    wake["proof"] = "A queued wake is not delivery or a read. The receiving chat marks it read by acknowledging or replying."
     return wake

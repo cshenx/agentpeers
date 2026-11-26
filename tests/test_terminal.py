@@ -1,12 +1,15 @@
 """Terminal consumer routing and the exact native wire contract."""
+import errno
 import io
 import json
 import os
 import socket
 import struct
+import subprocess
 import tempfile
 import time
 import unittest
+from pathlib import Path
 import uuid
 from unittest.mock import patch
 
@@ -177,6 +180,98 @@ class TerminalJourney(unittest.TestCase):
 
 
 class NativeDiscovery(unittest.TestCase):
+    def test_unreadable_claude_registry_blocks_named_send_but_absent_registry_does_not(self):
+        codex = {"id": C, "runtime": "codex", "name_address": "builder", "surface": "shared-server"}
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"AGENTPEERS_HOME": home}), \
+             patch.object(native, "claude_home", return_value=Path(home)), \
+             patch.object(native, "codex_sessions", return_value=[codex]) as discover_codex, \
+             patch.object(native, "send_codex", return_value={"transport": "fixture"}) as send, \
+             patch("agentpeers.core.codex_wake.after_unavailable") as wake, Bridge() as bridge:
+            with patch.object(Path, "iterdir", side_effect=PermissionError("fixture registry denied")):
+                blocked = bridge.send(A, "builder", "check", SCOPE)
+                self.assertEqual(blocked["status"], "unavailable")
+                self.assertFalse(blocked["mailbox_available"])
+                self.assertIn("Claude", blocked["detail"]["reason"])
+                discover_codex.assert_not_called()
+                send.assert_not_called()
+                exact = bridge.send(A, C, "exact check", SCOPE)
+                self.assertEqual(exact["recipient"], C)
+                self.assertEqual(exact["status"], "submitted")
+
+            self.assertFalse((Path(home) / "sessions").exists())
+            named = bridge.send(A, "builder", "named check", SCOPE)
+            self.assertEqual(named["recipient"], C)
+            self.assertEqual(named["status"], "submitted")
+            self.assertEqual(send.call_count, 2)
+            wake.assert_not_called()
+
+    def test_claude_registry_record_io_error_blocks_named_delivery(self):
+        codex = {"id": C, "runtime": "codex", "name_address": "builder", "surface": "shared-server"}
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"AGENTPEERS_HOME": home}), \
+             patch.object(native, "claude_home", return_value=Path(home)), \
+             patch.object(native, "codex_sessions", return_value=[codex]), \
+             patch.object(native, "send_codex") as send, Bridge() as bridge:
+            sessions = Path(home) / "sessions"
+            sessions.mkdir(mode=0o700)
+            (sessions / "23456.json").touch()
+            with patch.object(Path, "read_text", side_effect=OSError(errno.EIO, "fixture read failed")):
+                problem = bridge.send(A, "builder", "check", SCOPE)
+            self.assertEqual(problem["status"], "unavailable")
+            self.assertFalse(problem["mailbox_available"])
+            self.assertIn("discovery is incomplete", problem["detail"]["reason"])
+            send.assert_not_called()
+
+    def test_shared_handshake_timeout_blocks_named_send_with_no_stored_codex_rows(self):
+        claude = {"id": A, "runtime": "claude", "name_address": "reviewer"}
+        with tempfile.TemporaryDirectory() as home, \
+             patch.dict(os.environ, {"AGENTPEERS_HOME": home, "CODEX_HOME": home}), \
+             patch.object(native, "stored_codex_sessions", return_value=[]), \
+             patch.object(native, "claude_sessions", return_value=[claude]), \
+             patch.object(native, "send_claude", return_value={"transport": "fixture"}) as send, \
+             patch.object(native, "Desktop") as desktop, \
+             patch("agentpeers.core.codex_wake.after_unavailable") as wake, Bridge() as bridge:
+            # Supply a socket path and stall the actual handshake on a fixture socket.
+            control = Path(home) / "app-server-control"
+            control.mkdir(mode=0o700)
+            socket_path = control / "app-server-control.sock"
+            socket_path.touch()
+            with patch.object(native, "owned_path", side_effect=lambda path, kind: path), \
+                 patch.object(socket, "socket") as constructor:
+                connection = constructor.return_value
+                connection.recv.side_effect = TimeoutError("fixture handshake timed out")
+                blocked = bridge.send(C, "reviewer", "check", SCOPE)
+                self.assertEqual(blocked["status"], "unavailable")
+                self.assertFalse(blocked["mailbox_available"])
+                self.assertIn("fixture handshake timed out", blocked["detail"]["reason"])
+                connection.sendall.assert_called_once()
+                connection.close.assert_called_once()
+                send.assert_not_called()
+                exact = bridge.send(C, A, "exact check", SCOPE)
+                self.assertEqual(exact["recipient"], A)
+                self.assertEqual(exact["status"], "submitted")
+
+            socket_path.unlink()
+            named = bridge.send(C, "reviewer", "named check", SCOPE)
+            self.assertEqual(named["recipient"], A)
+            self.assertEqual(named["status"], "submitted")
+            self.assertEqual(send.call_count, 2)
+            desktop.assert_not_called()
+            wake.assert_not_called()
+
+    def test_claude_identity_timeout_fails_discovery_instead_of_hiding_a_live_name(self):
+        with tempfile.TemporaryDirectory() as home:
+            sessions = Path(home) / "sessions"
+            sessions.mkdir(mode=0o700)
+            (sessions / "23456.json").write_text(json.dumps({
+                "pid": 23456, "procStart": "fixture start", "name": "duplicate",
+                "sessionId": A.split(":")[1], "messagingSocketPath": "/fixture/claude.sock",
+            }))
+            with patch.object(native, "claude_home", return_value=Path(home)), \
+                 patch.object(native.os, "kill"), \
+                 patch.object(native.subprocess, "run", side_effect=subprocess.TimeoutExpired("ps", 3)):
+                with self.assertRaisesRegex(native.Unavailable, "discovery is incomplete"):
+                    native.claude_sessions()
+
     def test_named_fresh_loaded_terminal_is_included_before_first_saved_turn(self):
         with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:
             saved.return_value.__enter__.return_value.call.return_value = {"data": []}
@@ -189,6 +284,16 @@ class NativeDiscovery(unittest.TestCase):
             self.assertEqual(rows[0]["surface"], "shared-server")
             self.assertEqual(shared.return_value.call.call_args.args,
                              ("thread/read", {"threadId": C.split(":")[1], "includeTurns": False}))
+
+    def test_shared_server_timeout_blocks_discovery_even_with_stored_names(self):
+        thread = {"id": C.split(":")[1], "name": "stored"}
+        with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:
+            saved.return_value.__enter__.return_value.call.return_value = {"data": [thread]}
+            unavailable = native.Unavailable("fixture shared server unavailable")
+            unavailable.__cause__ = TimeoutError("fixture timeout")
+            shared.return_value.__enter__.side_effect = unavailable
+            with self.assertRaisesRegex(native.Unavailable, "fixture shared server unavailable"):
+                native.codex_sessions()
 
     def test_missing_loaded_metadata_fails_closed_instead_of_hiding_possible_duplicate(self):
         with patch.object(native, "AppServer") as saved, patch.object(native, "SharedServer") as shared:

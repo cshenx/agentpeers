@@ -133,8 +133,8 @@ class Bridge:
         if result["status"] == "unavailable" and result["recipient"]:
             result["delivery_note"] = ("Read from the mailbox; automatic delivery was unavailable." if result["read_at"] else
                 "Saved unread; wake queued. Not delivered: no live route reached the chat. AgentPeers queued its "
-                "fixed wake signal, so the chat should run a turn, read its mailbox and acknowledge. "
-                "Only that acknowledgment marks it read. Do not resend or claim the session ended."
+                "fixed wake signal, so the chat should run a turn and check its mailbox. "
+                "The receiving chat marks the message read by acknowledging or replying. Do not resend or claim the session ended."
                 if wake and wake["state"] == "queued" else
                 "Saved unread; not woken: no reply expected. The receiving session can collect it on its next inbox read, "
                 "then acknowledge after reading. Do not resend." if wake and wake["state"] == "no_reply_expected" else
@@ -168,7 +168,12 @@ class Bridge:
                 "to collect it, which is not delivery." if result["recipient"] and wake and wake["state"] == "queued" else
                 " The message is saved for the recipient to collect from its mailbox; "
                 "it will not automatically arrive when the chat is reopened." if result["recipient"] else
-                " No recipient mailbox was assigned; nothing will automatically arrive later.")
+                " No recipient mailbox assigned; nothing was saved for delivery.")
+        elif result["status"] == "unavailable" and not result["recipient"]:
+            result["destination_note"] = "No recipient mailbox assigned; nothing was saved for delivery."
+        if not result["recipient"] and not result["reply_to"] and failure.get("exact_candidate_id"):
+            result["destination_note"] += (" For a new send, you may explicitly choose the full session ID "
+                                           + failure["exact_candidate_id"] + ".")
         result["warnings"] = []
         if result["return_route"] and result["return_route"]["status"] == "wake_required":
             result["warnings"].append("The sender's desktop chat needs opening to receive replies. "
@@ -328,6 +333,21 @@ class Bridge:
                 self.db.execute("UPDATE messages SET recipient=? WHERE id=?", (recipient, ident))
                 self.db.execute("UPDATE message_routes SET sender_name=? WHERE message_id=?", (sender_name, ident))
         except native.Unavailable as exc:
+            failure = exc.diagnostics
+            if (original and failure.get("desktop_connection_outage")
+                    and failure.get("exact_candidate_id") == original["sender"]):
+                recipient = original["sender"]
+                detail = {"reason": "Saved to the original sender's exact mailbox (" + recipient + "). "
+                                    "Automatic delivery unavailable. " + failure["candidates"][0]["reason"],
+                          "route_failure": failure["candidates"][0]}
+                # Assign the exact mailbox and remove name access in the same transaction.
+                with self.db:
+                    self.db.execute("UPDATE messages SET recipient=?,status='unavailable',detail=? WHERE id=?",
+                                    (recipient, json.dumps(detail), ident))
+                    self.db.execute("UPDATE message_routes SET sender_name=?,recipient_name=NULL WHERE message_id=?",
+                                    (name_for(sender, rows), ident))
+                codex_wake.after_unavailable(self.db, ident, recipient, expects, reply_to)
+                return self.get(ident)
             with self.db:
                 self.db.execute("UPDATE messages SET status='unavailable',detail=? WHERE id=?",
                                 (json.dumps({"reason": str(exc), "queued": False,
