@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.3 — remove an internal machine label from a code comment
+
+- Replace a machine label in a test comment with neutral wording. No behavior change.
+
 ## 0.11.2 — recover replies during desktop connection outages
 
 - Report when an unverified named send saved nothing for delivery and show the full session ID if complete local discovery found one exact match. When desktop IPC is refused or missing, save a named reply unread to the original Codex sender's exact mailbox if it is the sole match in complete local discovery. The receipt preserves the transport failure. The existing opt-in wake rules apply.

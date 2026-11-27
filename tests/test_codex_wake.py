@@ -416,7 +416,7 @@ class Ownership(Base):
                      patch.object(native, "codex_desktop_app", return_value={"path": APP, "version": "26.1117.31558"})]
         for item in self.more:
             item.start()
-        # pid -> (parent, executable). 300-302 is the app's own chain, as observed on WH.
+        # pid -> (parent, executable). 300-302 is the app's own chain, as observed on a test machine.
         self.table = {300: (301, APP + "/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
                       301: (302, APP + "/Contents/Frameworks/Codex Framework.framework/Helpers/Codex (Aperitif).app/Contents/MacOS/Codex (Aperitif)"),
                       302: (1, APP + "/Contents/MacOS/ChatGPT"),
